@@ -1,4 +1,6 @@
 require('dotenv').config();
+const orderRoutes = require('./routes/orders');
+const cartRoutes = require('./routes/cart');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -50,6 +52,8 @@ app.get('/db-health', async (req, res) => {
 // Auth routes: /auth/register, /auth/login, /auth/me
 app.use('/auth', authRoutes);
 app.use('/products', productRoutes);
+app.use('/orders', orderRoutes);
+app.use('/cart', cartRoutes);
 
 // Seed default roles on startup
 async function ensureDefaultRoles() {

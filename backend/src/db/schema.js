@@ -68,10 +68,24 @@ const orderItems = pgTable("order_items", {
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
 });
 
+const cartItems = pgTable("cart_items", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
+  quantity: integer("quantity").notNull().default(1)
+});
+
+
 module.exports = {
   roles,
   users,
   products,
   orders,
   orderItems,
+  cartItems
 };
+
