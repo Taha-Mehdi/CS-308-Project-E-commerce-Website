@@ -6,12 +6,15 @@ function authMiddleware(req, res, next) {
   const [scheme, token] = authHeader.split(' ');
 
   if (scheme !== 'Bearer' || !token) {
-    return res.status(401).json({ message: 'Missing or invalid Authorization header' });
+    return res
+      .status(401)
+      .json({ message: 'Missing or invalid Authorization header' });
   }
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { id, email, roleId }
+    // payload: { id, email, roleId }
+    req.user = payload;
     next();
   } catch (err) {
     console.error('JWT verification failed:', err);
@@ -19,6 +22,20 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// Very simple admin check: assumes roleId === 1 is admin
+function requireAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  if (req.user.roleId !== 1) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+
+  next();
+}
+
 module.exports = {
   authMiddleware,
+  requireAdmin,
 };
