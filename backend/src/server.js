@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
+const invoiceRoutes = require('./routes/invoice');
 
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/auth', authRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/cart', cartRoutes);
+app.use('/invoice', invoiceRoutes);
 
 // Seed default roles on startup
 async function ensureDefaultRoles() {
