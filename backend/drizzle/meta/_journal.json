@@ -15,6 +15,13 @@
       "when": 1764110059713,
       "tag": "0001_cloudy_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764192149389,
+      "tag": "0002_acoustic_loa",
+      "breakpoints": true
     }
   ]
 }

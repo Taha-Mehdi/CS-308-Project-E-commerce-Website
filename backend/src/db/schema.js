@@ -6,6 +6,7 @@ const {
   boolean,
   timestamp,
   numeric,
+  varchar,
 } = require("drizzle-orm/pg-core");
 
 // Roles: admin, customer, support, etc.
@@ -40,6 +41,7 @@ const products = pgTable("products", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  imageUrl: varchar("image_url", { length: 512 }),
 });
 
 // Orders (one per purchase)

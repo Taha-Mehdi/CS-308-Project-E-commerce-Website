@@ -38,7 +38,11 @@ router.post('/register', async (req, res) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid data', errors: parsed.error.flatten() });
+      console.error("Register validation error:", parsed.error.flatten());
+      return res.status(400).json({
+        message: 'Invalid data',
+        errors: parsed.error.flatten(),
+      });
     }
 
     const { email, password, fullName } = parsed.data;

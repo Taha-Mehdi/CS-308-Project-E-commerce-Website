@@ -9,9 +9,12 @@ const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const invoiceRoutes = require('./routes/invoice');
-
+const path = require("path");
 
 const app = express();
+
+const uploadDir = path.join(__dirname, "..", "uploads");
+app.use("/uploads", express.static(uploadDir));
 
 const PORT = process.env.PORT || 4000;
 
