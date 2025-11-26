@@ -66,7 +66,7 @@ export default function SiteLayout({ children }) {
 
     if (typeof window === "undefined") return;
 
-    // listen for cart updates
+    // listen for cart updates from other components
     function handleCartUpdated() {
       loadCartCount();
     }
@@ -114,15 +114,34 @@ export default function SiteLayout({ children }) {
                 </span>
               )}
             </Link>
+            {user && (
+              <Link
+                href="/orders"
+                className="hover:text-black transition-colors"
+              >
+                Orders
+              </Link>
+            )}
+            {user && user.roleId === 1 && (
+              <Link
+                href="/admin"
+                className="hover:text-black transition-colors"
+              >
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Right: auth / account */}
           <div className="flex items-center gap-3 text-sm">
             {user ? (
               <>
-                <span className="hidden sm:inline text-gray-700">
+                <Link
+                  href="/account"
+                  className="hidden sm:inline text-gray-700 hover:text-black text-xs font-medium"
+                >
                   {user.fullName}
-                </span>
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="px-3 py-1.5 rounded-full border border-gray-300 text-gray-800 text-xs font-medium hover:bg-gray-100 transition-colors"
