@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register } = useAuth();
+
+  const next = searchParams.get("next") || "/";
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -21,7 +24,7 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, fullName);
-      router.push("/"); // go to home after register
+      router.push(next);
     } catch (err) {
       console.error(err);
       setError(err.message || "Registration failed");
@@ -96,7 +99,7 @@ export default function RegisterPage() {
         <p className="mt-4 text-sm text-center text-gray-600">
           Already have an account?{" "}
           <a
-            href="/login"
+            href={`/login?next=${encodeURIComponent(next)}`}
             className="text-blue-600 hover:underline font-medium"
           >
             Login

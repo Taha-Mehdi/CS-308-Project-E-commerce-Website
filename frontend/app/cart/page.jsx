@@ -58,6 +58,7 @@ export default function CartPage() {
     if (!loadingUser) {
       loadCartAndProducts();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingUser]);
 
   const productsMap = useMemo(() => {
@@ -114,6 +115,11 @@ export default function CartPage() {
         setMessage(data.message || "Failed to update cart item.");
       } else {
         await loadCartAndProducts();
+
+        // notify navbar to refresh cart badge
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("cart-updated"));
+        }
       }
     } catch (err) {
       console.error("Update cart error:", err);
@@ -145,6 +151,11 @@ export default function CartPage() {
         setMessage(data.message || "Failed to remove item.");
       } else {
         await loadCartAndProducts();
+
+        // notify navbar to refresh cart badge
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("cart-updated"));
+        }
       }
     } catch (err) {
       console.error("Remove cart item error:", err);
@@ -193,7 +204,7 @@ export default function CartPage() {
           `Order created successfully. Order ID: ${data.orderId}, Total: $${data.total}`
         );
 
-        // Clear cart UI (we also attempt to clear in backend)
+        // Attempt to clear cart items in backend
         for (const item of enrichedCart) {
           try {
             await fetch(`${apiBase}/cart/remove/${item.productId}`, {
@@ -206,6 +217,11 @@ export default function CartPage() {
         }
 
         await loadCartAndProducts();
+
+        // notify navbar to refresh cart badge
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("cart-updated"));
+        }
       }
     } catch (err) {
       console.error("Checkout error:", err);

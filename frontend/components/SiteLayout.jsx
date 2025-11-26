@@ -17,7 +17,6 @@ export default function SiteLayout({ children }) {
     router.push("/");
   }
 
-  // Load cart count whenever user changes
   useEffect(() => {
     async function loadCartCount() {
       try {
@@ -62,7 +61,20 @@ export default function SiteLayout({ children }) {
       }
     }
 
+    // initial load when user changes
     loadCartCount();
+
+    if (typeof window === "undefined") return;
+
+    // listen for cart updates
+    function handleCartUpdated() {
+      loadCartCount();
+    }
+
+    window.addEventListener("cart-updated", handleCartUpdated);
+    return () => {
+      window.removeEventListener("cart-updated", handleCartUpdated);
+    };
   }, [user, apiBase]);
 
   return (

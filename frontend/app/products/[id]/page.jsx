@@ -42,10 +42,18 @@ export default function ProductDetailPage() {
 
   async function handleAddToCart() {
     setAddMessage("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token")
+        : null;
 
+    // If not logged in → redirect to login with next param
     if (!token) {
-      setAddMessage("Please login to add items to your cart.");
+      const currentPath =
+        typeof window !== "undefined"
+          ? window.location.pathname
+          : `/products/${id}`;
+      router.push(`/login?next=${encodeURIComponent(currentPath)}`);
       return;
     }
 
@@ -72,6 +80,11 @@ export default function ProductDetailPage() {
         setAddMessage(data.message || "Failed to add to cart.");
       } else {
         setAddMessage("Added to cart.");
+
+        // Notify navbar to refresh cart count
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("cart-updated"));
+        }
       }
     } catch (err) {
       console.error("Add to cart error:", err);
