@@ -303,16 +303,29 @@ export default function CartPage() {
                 const priceNumber = p ? Number(p.price || 0) : 0;
                 const lineTotal = priceNumber * item.quantity;
 
+                const imageSrc =
+                  p && p.imageUrl
+                    ? `${apiBase}${p.imageUrl}`
+                    : null;
+
                 return (
                   <div
                     key={item.id}
                     className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
                   >
                     <div className="flex gap-4">
-                      <div className="w-20 h-16 rounded-xl bg-gray-100 flex items-center justify-center">
-                        <span className="text-[10px] tracking-wide text-gray-500 uppercase">
-                          Img
-                        </span>
+                      <div className="w-20 h-16 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={p?.name || `Product #${item.productId}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-[10px] tracking-wide text-gray-500 uppercase">
+                            Img
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-gray-900">
