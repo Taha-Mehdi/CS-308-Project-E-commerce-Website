@@ -172,6 +172,45 @@ export default function AdminProductsPage() {
     }
   }
 
+  async function handleImageChange(productId, file) {
+    if (!file) return;
+
+    try {
+      setSaving(true);
+      setMessage("");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setMessage("Please login as admin.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const res = await fetch(`${apiBase}/products/${productId}/image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setMessage(data.message || "Failed to upload image.");
+      } else {
+        setMessage("Image uploaded.");
+        await loadProducts();
+      }
+    } catch (err) {
+      console.error("Upload product image error:", err);
+      setMessage("Failed to upload image.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // auth loading
   if (loadingUser) {
     return (
@@ -232,7 +271,7 @@ export default function AdminProductsPage() {
     <SiteLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap itemsCENTER justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
               Admin · Products
@@ -361,47 +400,85 @@ export default function AdminProductsPage() {
             </p>
           ) : (
             <div className="space-y-2">
-              {products.map((p) => (
-                <div
-                  key={p.id}
-                  className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {p.name}{" "}
-                      {!p.isActive && (
-                        <span className="ml-1 text-[10px] uppercase tracking-wide text-red-500">
-                          (inactive)
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      ID: {p.id} · ${Number(p.price || 0).toFixed(2)} · Stock:{" "}
-                      {p.stock}
-                    </p>
-                    {p.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2">
-                        {p.description}
-                      </p>
-                    )}
+              {products.map((p) => {
+                const imageSrc = p.imageUrl
+                  ? `${apiBase}${p.imageUrl}`
+                  : null;
+
+                return (
+                  <div
+                    key={p.id}
+                    className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                  >
+                    <div className="flex gap-3 items-start">
+                      <div className="w-20 h-16 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-[10px] tracking-wide text-gray-500 uppercase">
+                            Img
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {p.name}{" "}
+                          {!p.isActive && (
+                            <span className="ml-1 text-[10px] uppercase tracking-wide text-red-500">
+                              (inactive)
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          ID: {p.id} · ${Number(p.price || 0).toFixed(2)} · Stock:{" "}
+                          {p.stock}
+                        </p>
+                        {p.description && (
+                          <p className="text-xs text-gray-500 line-clamp-2">
+                            {p.description}
+                          </p>
+                        )}
+                        <div className="mt-2">
+                          <label className="text-[11px] text-gray-600 mr-2">
+                            Upload image:
+                          </label>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={saving}
+                            onChange={(e) =>
+                              handleImageChange(
+                                p.id,
+                                e.target.files?.[0] || null
+                              )
+                            }
+                            className="text-[11px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startEdit(p)}
+                        className="px-3 py-1.5 rounded-full border border-gray-300 text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        disabled={saving}
+                        className="px-3 py-1.5 rounded-full border border-red-300 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => startEdit(p)}
-                      className="px-3 py-1.5 rounded-full border border-gray-300 text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      disabled={saving}
-                      className="px-3 py-1.5 rounded-full border border-red-300 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

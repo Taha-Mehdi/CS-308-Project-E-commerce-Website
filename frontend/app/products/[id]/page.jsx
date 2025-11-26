@@ -47,7 +47,6 @@ export default function ProductDetailPage() {
         ? localStorage.getItem("token")
         : null;
 
-    // If not logged in → redirect to login with next param
     if (!token) {
       const currentPath =
         typeof window !== "undefined"
@@ -80,8 +79,6 @@ export default function ProductDetailPage() {
         setAddMessage(data.message || "Failed to add to cart.");
       } else {
         setAddMessage("Added to cart.");
-
-        // Notify navbar to refresh cart count
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("cart-updated"));
         }
@@ -101,6 +98,11 @@ export default function ProductDetailPage() {
         : product.price.toString()
       : "0.00";
 
+  const imageSrc =
+    product && product.imageUrl
+      ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${product.imageUrl}`
+      : null;
+
   return (
     <SiteLayout>
       {loadingProduct ? (
@@ -117,12 +119,20 @@ export default function ProductDetailPage() {
         </div>
       ) : (
         <div className="grid gap-8 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          {/* Image / visual placeholder */}
+          {/* Image */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center">
-              <span className="text-[11px] tracking-wide text-gray-500 uppercase">
-                Product Image
-              </span>
+              {imageSrc ? (
+                <img
+                  src={imageSrc}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[11px] tracking-wide text-gray-500 uppercase">
+                  Product Image
+                </span>
+              )}
             </div>
           </div>
 

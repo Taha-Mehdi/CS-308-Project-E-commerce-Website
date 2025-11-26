@@ -8,13 +8,26 @@ export default function ProductCard({ product }) {
       ? product.price
       : product.price?.toString() ?? "0.00";
 
+  const hasImage = product.imageUrl;
+  const imageSrc = hasImage
+    ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${product.imageUrl}`
+    : null;
+
   return (
     <div className="group bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-      {/* Image placeholder (for now) */}
-      <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center">
-        <span className="text-[11px] tracking-wide text-gray-500 uppercase">
-          Product Image
-        </span>
+      {/* Image */}
+      <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center overflow-hidden">
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={product.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span className="text-[11px] tracking-wide text-gray-500 uppercase">
+            Product Image
+          </span>
+        )}
       </div>
 
       <div className="p-4 flex flex-col gap-2 flex-1">
