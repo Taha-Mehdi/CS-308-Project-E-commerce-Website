@@ -1,104 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
-import Link from "next/link";
 
-const STATUS_OPTIONS = ["pending", "paid", "shipped", "delivered", "cancelled"];
-
-export default function AdminPage() {
+export default function AdminDashboardPage() {
   const { user, loadingUser } = useAuth();
-  const [orders, setOrders] = useState([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const [savingStatusId, setSavingStatusId] = useState(null);
-  const [message, setMessage] = useState("");
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  async function loadOrders() {
-    setLoadingOrders(true);
-    setMessage("");
-
-    try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-      if (!token) {
-        setOrders([]);
-        setLoadingOrders(false);
-        return;
-      }
-
-      const res = await fetch(`${apiBase}/orders`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setMessage(data.message || "Failed to load orders.");
-        setOrders([]);
-      } else {
-        const data = await res.json();
-        setOrders(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error("Admin load orders error:", err);
-      setMessage("Failed to load orders.");
-      setOrders([]);
-    } finally {
-      setLoadingOrders(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!loadingUser && user && user.roleId === 1) {
-      loadOrders();
-    } else if (!loadingUser) {
-      setLoadingOrders(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingUser, user]);
-
-  async function handleStatusChange(orderId, newStatus) {
-    try {
-      setSavingStatusId(orderId);
-      setMessage("");
-
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setMessage("Please login as admin.");
-        return;
-      }
-
-      const res = await fetch(`${apiBase}/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(data.message || "Failed to update order status.");
-      } else {
-        setMessage(`Order #${orderId} status updated to "${newStatus}".`);
-        await loadOrders();
-      }
-    } catch (err) {
-      console.error("Update order status error:", err);
-      setMessage("Failed to update order status.");
-    } finally {
-      setSavingStatusId(null);
-    }
-  }
-
-  // Loading auth
   if (loadingUser) {
     return (
       <SiteLayout>
@@ -107,12 +15,11 @@ export default function AdminPage() {
     );
   }
 
-  // Not logged in
   if (!user) {
     return (
       <SiteLayout>
         <div className="space-y-3">
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
             Admin Dashboard
           </h1>
           <p className="text-sm text-gray-600">
@@ -137,20 +44,22 @@ export default function AdminPage() {
     );
   }
 
-  // Logged in but not admin
   if (user.roleId !== 1) {
     return (
       <SiteLayout>
         <div className="space-y-3">
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
             Admin Dashboard
           </h1>
           <p className="text-sm text-gray-600">
             Your account does not have admin permissions.
           </p>
-          <p className="text-xs text-gray-500">
-            This page is only accessible to users with roleId = 1 (admin).
-          </p>
+          <Link
+            href="/"
+            className="inline-flex text-xs text-gray-800 underline underline-offset-4 mt-2"
+          >
+            Back to homepage
+          </Link>
         </div>
       </SiteLayout>
     );
@@ -160,84 +69,100 @@ export default function AdminPage() {
   return (
     <SiteLayout>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
-              Admin Dashboard
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Manage orders and update their status.
-            </p>
-          </div>
-          <Link
-            href="/products"
-            className="text-[11px] text-gray-700 underline underline-offset-4"
-          >
-            View store
-          </Link>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+            Admin Dashboard
+          </h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Manage products, orders, and view analytics for the store.
+          </p>
         </div>
 
-        {message && (
-          <p className="text-xs text-gray-700">{message}</p>
-        )}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Manage products */}
+          <Link
+            href="/admin/products"
+            className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+          >
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
+                Products
+              </p>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Manage catalog
+              </h2>
+              <p className="text-xs text-gray-600">
+                Create, edit, and remove products. Upload images and control stock.
+              </p>
+            </div>
+            <span className="mt-3 text-[11px] text-gray-800 group-hover:underline underline-offset-4">
+              Go to products →
+            </span>
+          </Link>
 
-        {loadingOrders ? (
-          <p className="text-sm text-gray-500">Loading orders…</p>
-        ) : orders.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No orders yet.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {orders.map((order) => {
-              const date = order.createdAt
-                ? new Date(order.createdAt)
-                : null;
+          {/* Admin orders */}
+          <Link
+            href="/admin/orders"
+            className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+          >
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
+                Orders
+              </p>
+              <h2 className="text-sm font-semibold text-gray-900">
+                All customer orders
+              </h2>
+              <p className="text-xs text-gray-600">
+                See all orders across users and their statuses.
+              </p>
+            </div>
+            <span className="mt-3 text-[11px] text-gray-800 group-hover:underline underline-offset-4">
+              View orders →
+            </span>
+          </Link>
 
-              return (
-                <div
-                  key={order.id}
-                  className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      Order #{order.id}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      User ID: {order.userId}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {date ? date.toLocaleString() : "Unknown date"}
-                    </p>
-                    <p className="text-xs font-semibold text-gray-900">
-                      Total: ${Number(order.total || 0).toFixed(2)}
-                    </p>
-                  </div>
+          {/* Analytics */}
+          <Link
+            href="/admin/analytics"
+            className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+          >
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
+                Analytics
+              </p>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Sales analytics
+              </h2>
+              <p className="text-xs text-gray-600">
+                View charts for orders, revenue, and product performance.
+              </p>
+            </div>
+            <span className="mt-3 text-[11px] text-gray-800 group-hover:underline underline-offset-4">
+              Open analytics →
+            </span>
+          </Link>
 
-                  <div className="flex flex-col items-end gap-2 min-w-[160px]">
-                    <span className="text-[11px] text-gray-500 uppercase tracking-[0.18em]">
-                      Status
-                    </span>
-                    <select
-                      value={order.status}
-                      onChange={(e) =>
-                        handleStatusChange(order.id, e.target.value)
-                      }
-                      disabled={savingStatusId === order.id}
-                      className="w-full border border-gray-300 rounded-full px-3 py-1.5 text-[11px] text-gray-800 bg-white focus:outline-none focus:ring focus:ring-gray-300"
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+          {/* Back to store */}
+          <Link
+            href="/products"
+            className="group rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 hover:border-gray-400 transition-colors flex flex-col justify-between"
+          >
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
+                Store
+              </p>
+              <h2 className="text-sm font-semibold text-gray-900">
+                View storefront
+              </h2>
+              <p className="text-xs text-gray-600">
+                Jump to the public catalog to see what customers see.
+              </p>
+            </div>
+            <span className="mt-3 text-[11px] text-gray-800 group-hover:underline underline-offset-4">
+              Go to store →
+            </span>
+          </Link>
+        </div>
       </div>
     </SiteLayout>
   );
