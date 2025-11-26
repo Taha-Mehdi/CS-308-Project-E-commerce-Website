@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
@@ -8,10 +9,61 @@ export default function SiteLayout({ children }) {
   const router = useRouter();
   const { user, logout } = useAuth();
 
+  const [cartCount, setCartCount] = useState(0);
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
   function handleLogout() {
     logout();
     router.push("/");
   }
+
+  // Load cart count whenever user changes
+  useEffect(() => {
+    async function loadCartCount() {
+      try {
+        if (!user) {
+          setCartCount(0);
+          return;
+        }
+
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+        if (!token) {
+          setCartCount(0);
+          return;
+        }
+
+        const res = await fetch(`${apiBase}/cart`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          setCartCount(0);
+          return;
+        }
+
+        const data = await res.json();
+        if (!Array.isArray(data)) {
+          setCartCount(0);
+          return;
+        }
+
+        const totalQty = data.reduce(
+          (sum, item) => sum + (Number(item.quantity) || 0),
+          0
+        );
+        setCartCount(totalQty);
+      } catch (err) {
+        console.error("Failed to load cart count:", err);
+        setCartCount(0);
+      }
+    }
+
+    loadCartCount();
+  }, [user, apiBase]);
 
   return (
     <div className="min-h-screen bg-[#f5f5f4] flex flex-col">
@@ -41,9 +93,14 @@ export default function SiteLayout({ children }) {
             </Link>
             <Link
               href="/cart"
-              className="hover:text-black transition-colors"
+              className="hover:text-black transition-colors flex items-center gap-1"
             >
               Cart
+              {user && cartCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-black text-white text-[10px]">
+                  {cartCount}
+                </span>
+              )}
             </Link>
           </nav>
 
