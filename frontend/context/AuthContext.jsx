@@ -4,115 +4,94 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext(null);
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
-
 export function AuthProvider({ children }) {
+  const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
-  const [tokenReady, setTokenReady] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  // Load token + user on first load
+  // Load from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    if (!storedToken) {
-      setTokenReady(true);
+    try {
+      const storedToken =
+        typeof window !== "undefined"
+          ? localStorage.getItem("token")
+          : null;
+      const storedUser =
+        typeof window !== "undefined"
+          ? localStorage.getItem("user")
+          : null;
+
+      if (storedToken && storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setToken(storedToken);
+          setUser(parsedUser);
+        } catch (err) {
+          console.warn("Failed to parse stored user:", err);
+        }
+      }
+    } catch (err) {
+      console.warn("Auth init error:", err);
+    } finally {
       setLoadingUser(false);
+    }
+  }, []);
+
+  // MAIN login() — this is where the “Invalid data” was coming from before
+  function login(newToken, newUser) {
+    // Be lenient: just check we have *something* sensible
+    if (!newToken || !newUser || typeof newUser !== "object") {
+      console.warn("AuthContext.login received invalid data:", {
+        newToken,
+        newUser,
+      });
+      // Don’t throw anymore – just ignore and stay logged out
       return;
     }
 
-    async function fetchMe() {
-      try {
-        const res = await fetch(`${apiBase}/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${storedToken}`,
-          },
-        });
+    try {
+      setToken(newToken);
+      setUser(newUser);
 
-        if (!res.ok) {
-          // token invalid/expired
-          localStorage.removeItem("token");
-          setUser(null);
-        } else {
-          const data = await res.json();
-          setUser(data);
-        }
-      } catch (err) {
-        console.error("Failed to load current user:", err);
-      } finally {
-        setTokenReady(true);
-        setLoadingUser(false);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("token", newToken);
+        localStorage.setItem("user", JSON.stringify(newUser));
       }
+    } catch (err) {
+      console.error("AuthContext.login storage error:", err);
     }
-
-    fetchMe();
-  }, [apiBase]);
-
-  // Login helper
-  async function login(email, password) {
-    const res = await fetch(`${apiBase}/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Login failed");
-    }
-
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      setUser(data.user);
-    }
-
-    return data;
   }
 
-  // Register helper
-  async function register(email, password, fullName) {
-    const res = await fetch(`${apiBase}/auth/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password, fullName }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Register failed");
-    }
-
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      setUser(data.user);
-    }
-
-    return data;
-  }
-
-  // Logout helper
   function logout() {
-    localStorage.removeItem("token");
-    setUser(null);
+    try {
+      setToken(null);
+      setUser(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
+    } catch (err) {
+      console.error("AuthContext.logout error:", err);
+    }
   }
 
   const value = {
+    token,
     user,
     loadingUser,
-    tokenReady,
     login,
-    register,
     logout,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return ctx;
 }

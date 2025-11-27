@@ -5,200 +5,250 @@ import { useParams, useRouter } from "next/navigation";
 import SiteLayout from "../../../components/SiteLayout";
 
 export default function ProductDetailPage() {
-  const params = useParams();
+  const { id } = useParams();
   const router = useRouter();
-  const { id } = params;
 
   const [product, setProduct] = useState(null);
-  const [loadingProduct, setLoadingProduct] = useState(true);
-  const [error, setError] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [adding, setAdding] = useState(false);
-  const [addMessage, setAddMessage] = useState("");
+  const [loadingProduct, setLoadingProduct] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   useEffect(() => {
     async function loadProduct() {
+      if (!id) return;
+      setLoadingProduct(true);
+      setMessage("");
+
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/products/${id}`
-        );
+        const res = await fetch(`${apiBase}/products/${id}`);
+        const data = await res.json();
+
         if (!res.ok) {
-          setError("Product not found");
           setProduct(null);
+          setMessage(data.message || "Failed to load product.");
         } else {
-          const data = await res.json();
           setProduct(data);
         }
       } catch (err) {
-        console.error("Failed to load product:", err);
-        setError("Failed to load product");
+        console.error("Product load error:", err);
+        setProduct(null);
+        setMessage("Failed to load product.");
       } finally {
         setLoadingProduct(false);
       }
     }
 
-    if (id) loadProduct();
-  }, [id]);
+    loadProduct();
+  }, [apiBase, id]);
+
+  function handleQuantityChange(delta) {
+    setQuantity((prev) => {
+      const next = prev + delta;
+      if (next < 1) return 1;
+      return next;
+    });
+  }
 
   async function handleAddToCart() {
-    setAddMessage("");
+    setMessage("");
+
     const token =
       typeof window !== "undefined"
         ? localStorage.getItem("token")
         : null;
 
     if (!token) {
-      const currentPath =
-        typeof window !== "undefined"
-          ? window.location.pathname
-          : `/products/${id}`;
-      router.push(`/login?next=${encodeURIComponent(currentPath)}`);
+      // redirect to login with next=product page
+      router.push(`/login?next=${encodeURIComponent(`/products/${id}`)}`);
       return;
     }
 
+    if (!product) return;
+
+    setSubmitting(true);
     try {
-      setAdding(true);
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/cart/add`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            productId: product.id,
-            quantity: Number(quantity) || 1,
-          }),
-        }
-      );
+      const res = await fetch(`${apiBase}/cart/add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          productId: product.id,
+          quantity,
+        }),
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setAddMessage(data.message || "Failed to add to cart.");
+        setMessage(data.message || "Failed to add to bag.");
       } else {
-        setAddMessage("Added to cart.");
+        setMessage("Added to your bag.");
+        // Notify navbar/cart count
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("cart-updated"));
         }
       }
     } catch (err) {
       console.error("Add to cart error:", err);
-      setAddMessage("Failed to add to cart.");
+      setMessage("Failed to add to bag.");
     } finally {
-      setAdding(false);
+      setSubmitting(false);
     }
   }
 
-  const price =
-    product && product.price
-      ? typeof product.price === "string"
-        ? product.price
-        : product.price.toString()
-      : "0.00";
-
+  const hasImage = product?.imageUrl;
   const imageSrc =
-    product && product.imageUrl
+    hasImage && product
       ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${product.imageUrl}`
       : null;
 
   return (
     <SiteLayout>
-      {loadingProduct ? (
-        <p className="text-sm text-gray-500">Loading product…</p>
-      ) : error || !product ? (
-        <div className="space-y-3">
-          <p className="text-sm text-red-600">{error || "Product not found"}</p>
+      <div className="space-y-6">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 uppercase tracking-[0.18em]">
           <button
+            type="button"
             onClick={() => router.push("/products")}
-            className="inline-flex text-xs text-gray-700 underline underline-offset-4"
+            className="hover:text-black"
           >
-            Back to products
+            Drops
           </button>
+          <span>/</span>
+          <span className="text-gray-800">
+            {product?.name ? product.name : "Loading"}
+          </span>
         </div>
-      ) : (
-        <div className="grid gap-8 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          {/* Image */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center">
-              {imageSrc ? (
-                <img
-                  src={imageSrc}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-[11px] tracking-wide text-gray-500 uppercase">
-                  Product Image
-                </span>
-              )}
-            </div>
-          </div>
 
-          {/* Details */}
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold tracking-[0.24em] text-gray-500 uppercase">
-                Product
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
-                {product.name}
-              </h1>
-            </div>
-
-            <p className="text-sm text-gray-600">
-              {product.description || "No description provided."}
-            </p>
-
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-gray-900">
-                ${price}
-              </p>
-              <p className="text-xs text-gray-500">
-                {product.stock > 0
-                  ? `In stock · ${product.stock} available`
-                  : "Out of stock"}
-              </p>
+        {/* Main content */}
+        {loadingProduct ? (
+          <p className="text-sm text-gray-500">Loading product…</p>
+        ) : !product ? (
+          <p className="text-sm text-gray-500">
+            Product not found or unavailable.
+          </p>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 items-start">
+            {/* Left: hero image */}
+            <div className="rounded-3xl bg-white border border-gray-200/70 shadow-sm overflow-hidden">
+              <div className="relative">
+                <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center overflow-hidden">
+                  {imageSrc ? (
+                    <img
+                      src={imageSrc}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[11px] tracking-[0.2em] text-gray-500 uppercase">
+                      Sneaks-Up
+                    </span>
+                  )}
+                </div>
+                {/* Simple overlay label */}
+                <div className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1">
+                  <span className="text-[11px] font-semibold text-white uppercase tracking-[0.16em]">
+                    Sneaks-Up Drop
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <label className="text-xs text-gray-600" htmlFor="quantity">
-                  Quantity
-                </label>
-                <input
-                  id="quantity"
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-gray-300 bg-white"
-                />
+            {/* Right: product info */}
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+                  {product.name}
+                </h1>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-semibold text-gray-900">
+                    ${product.price}
+                  </span>
+                  <span
+                    className={`text-[11px] font-medium uppercase tracking-[0.18em] px-3 py-1 rounded-full ${
+                      (product.stock || 0) > 0
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-red-100 text-red-600"
+                    }`}
+                  >
+                    {(product.stock || 0) > 0
+                      ? `${product.stock} in stock`
+                      : "Sold out"}
+                  </span>
+                </div>
               </div>
 
-              <button
-                onClick={handleAddToCart}
-                disabled={adding || product.stock <= 0}
-                className="inline-flex items-center px-4 py-2.5 rounded-full bg-black text-white text-xs font-medium hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {adding ? "Adding…" : "Add to cart"}
-              </button>
-
-              {addMessage && (
-                <p className="text-xs text-gray-600">{addMessage}</p>
+              {product.description && (
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {product.description}
+                </p>
               )}
-            </div>
 
-            <button
-              onClick={() => router.push("/products")}
-              className="inline-flex text-[11px] text-gray-700 underline underline-offset-4 mt-4"
-            >
-              Back to all products
-            </button>
+              {/* Quantity + actions */}
+              {(product.stock || 0) > 0 && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-gray-600 uppercase tracking-[0.18em]">
+                      Quantity
+                    </p>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleQuantityChange(-1)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 text-sm text-gray-800 hover:bg-gray-100"
+                      >
+                        –
+                      </button>
+                      <span className="w-8 text-center text-sm font-medium text-gray-900">
+                        {quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleQuantityChange(1)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 text-sm text-gray-800 hover:bg-gray-100"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={submitting}
+                    className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {submitting ? "Adding…" : "Add to bag"}
+                  </button>
+                </div>
+              )}
+
+              {/* System message */}
+              {message && (
+                <p className="text-xs text-gray-700 pt-1">{message}</p>
+              )}
+
+              {/* Meta info */}
+              <div className="pt-2 border-t border-gray-200 mt-4 space-y-1.5">
+                <p className="text-[11px] text-gray-500 uppercase tracking-[0.18em]">
+                  Details
+                </p>
+                <p className="text-xs text-gray-500">
+                  All data for this product is served from the Node / Express
+                  backend using Neon + Drizzle. Images are stored via the admin
+                  upload endpoint.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </SiteLayout>
   );
 }

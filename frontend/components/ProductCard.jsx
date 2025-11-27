@@ -13,32 +13,45 @@ export default function ProductCard({ product }) {
     ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${product.imageUrl}`
     : null;
 
-  return (
-    <div className="group bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-      {/* Image */}
-      <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center overflow-hidden">
-        {imageSrc ? (
-          <img
-            src={imageSrc}
-            alt={product.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <span className="text-[11px] tracking-wide text-gray-500 uppercase">
-            Product Image
-          </span>
-        )}
-      </div>
+  const inStock = (product.stock || 0) > 0;
 
-      <div className="p-4 flex flex-col gap-2 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
-            {product.name}
-          </h3>
-          <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+  return (
+    <Link
+      href={`/products/${product.id}`}
+      className="group block bg-white rounded-3xl border border-gray-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
+    >
+      {/* Image */}
+      <div className="relative">
+        <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center overflow-hidden">
+          {imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={product.name}
+              className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-200"
+            />
+          ) : (
+            <span className="text-[11px] tracking-[0.2em] text-gray-500 uppercase">
+              Sneaks-Up
+            </span>
+          )}
+        </div>
+
+        {/* Gradient overlay bottom */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+        {/* Price pill */}
+        <div className="absolute bottom-3 left-3">
+          <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-gray-900">
             ${price}
           </span>
         </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 space-y-1.5">
+        <h3 className="text-sm font-semibold text-gray-900 line-clamp-1">
+          {product.name}
+        </h3>
 
         {product.description && (
           <p className="text-xs text-gray-500 line-clamp-2">
@@ -46,18 +59,16 @@ export default function ProductCard({ product }) {
           </p>
         )}
 
-        <div className="mt-auto pt-2">
-          <Link
-            href={`/products/${product.id}`}
-            className="inline-flex items-center text-[11px] font-medium text-gray-900 group-hover:underline underline-offset-4"
+        <div className="pt-1">
+          <span
+            className={`text-[11px] font-medium ${
+              inStock ? "text-emerald-600" : "text-red-500"
+            }`}
           >
-            View details
-            <span className="ml-1 text-gray-400 group-hover:text-gray-600">
-              →
-            </span>
-          </Link>
+            {inStock ? `${product.stock} in stock` : "Sold out"}
+          </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
