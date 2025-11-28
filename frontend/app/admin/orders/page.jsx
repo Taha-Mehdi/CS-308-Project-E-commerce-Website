@@ -2,28 +2,44 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import SiteLayout from "../../../components/SiteLayout";
 import { useAuth } from "../../../context/AuthContext";
 
+const STATUS_OPTIONS = ["pending", "paid", "shipped", "delivered", "cancelled"];
+
+function statusBadgeClasses(status) {
+  switch (status) {
+    case "paid":
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+    case "shipped":
+      return "bg-blue-50 text-blue-700 border border-blue-200";
+    case "delivered":
+      return "bg-purple-50 text-purple-700 border border-purple-200";
+    case "cancelled":
+      return "bg-red-50 text-red-700 border border-red-200";
+    case "pending":
+    default:
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+}
+
 export default function AdminOrdersPage() {
   const { user, loadingUser } = useAuth();
-  const router = useRouter();
-
-  const [orders, setOrders] = useState([]);
-  const [items, setItems] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [downloadingId, setDownloadingId] = useState(null);
-  const [message, setMessage] = useState("");
-
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+  const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const [detailsById, setDetailsById] = useState({});
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
+
+  // Load all orders (admin) + products for names/images
   useEffect(() => {
     async function loadAll() {
-      if (!user || user.roleId !== 1) return;
-
-      setLoadingData(true);
+      setLoading(true);
       setMessage("");
 
       try {
@@ -34,95 +50,81 @@ export default function AdminOrdersPage() {
 
         if (!token) {
           setOrders([]);
-          setItems([]);
           setProducts([]);
-          setLoadingData(false);
+          setMessage("Please login as admin.");
+          setLoading(false);
           return;
         }
 
-        // 1) All orders
-        try {
-          const oRes = await fetch(`${apiBase}/orders`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+        // Fetch orders (admin)
+        const ordersRes = await fetch(`${apiBase}/orders`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-          if (oRes.ok) {
-            const ct = oRes.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              let odata = null;
-              try {
-                odata = await oRes.json();
-              } catch {
-                odata = null;
-              }
-              if (Array.isArray(odata)) {
-                setOrders(odata);
-                setItems([]);
-              } else if (odata && typeof odata === "object") {
-                setOrders(Array.isArray(odata.orders) ? odata.orders : []);
-                setItems(Array.isArray(odata.items) ? odata.items : []);
-              } else {
-                setOrders([]);
-                setItems([]);
-              }
-            } else {
-              setOrders([]);
-              setItems([]);
-            }
-          } else {
-            setOrders([]);
-            setItems([]);
+        let ordersData = [];
+        if (ordersRes.ok) {
+          const ct = ordersRes.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
             try {
-              const ct = oRes.headers.get("content-type") || "";
-              if (ct.includes("application/json")) {
-                const errData = await oRes.json();
-                setMessage(errData.message || "Failed to load orders.");
-              } else {
-                setMessage("Failed to load orders.");
+              const json = await ordersRes.json();
+              if (Array.isArray(json)) {
+                ordersData = json;
               }
             } catch {
-              setMessage("Failed to load orders.");
+              ordersData = [];
             }
           }
-        } catch (err) {
-          console.error("Admin orders load error:", err);
-          setOrders([]);
-          setItems([]);
-          setMessage("Failed to load orders.");
+        } else {
+          let errMsg = "Failed to load orders.";
+          try {
+            const ct = ordersRes.headers.get("content-type") || "";
+            if (ct.includes("application/json")) {
+              const errJson = await ordersRes.json();
+              if (errJson && errJson.message) {
+                errMsg = errJson.message;
+              }
+            }
+          } catch {
+            // ignore
+          }
+          setMessage(errMsg);
         }
 
-        // 2) Products (for names/images)
-        try {
-          const pRes = await fetch(`${apiBase}/products`);
-          if (pRes.ok) {
-            const ct2 = pRes.headers.get("content-type") || "";
-            if (ct2.includes("application/json")) {
-              const pData = await pRes.json();
-              setProducts(Array.isArray(pData) ? pData : []);
-            } else {
-              setProducts([]);
+        // Fetch products for mapping
+        const productsRes = await fetch(`${apiBase}/products`);
+        let productsData = [];
+        if (productsRes.ok) {
+          const ct = productsRes.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            try {
+              const json = await productsRes.json();
+              if (Array.isArray(json)) {
+                productsData = json;
+              }
+            } catch {
+              productsData = [];
             }
-          } else {
-            setProducts([]);
           }
-        } catch {
-          setProducts([]);
         }
+
+        setOrders(ordersData);
+        setProducts(productsData);
       } catch (err) {
-        console.error("Admin orders/loadAll error:", err);
+        console.error("Admin orders load error:", err);
         setOrders([]);
-        setItems([]);
         setProducts([]);
         setMessage("Failed to load orders.");
       } finally {
-        setLoadingData(false);
+        setLoading(false);
       }
     }
 
     if (!loadingUser && user && user.roleId === 1) {
       loadAll();
+    } else if (!loadingUser) {
+      setLoading(false);
     }
   }, [apiBase, loadingUser, user]);
 
@@ -134,51 +136,223 @@ export default function AdminOrdersPage() {
     return m;
   }, [products]);
 
-  const itemsByOrderId = useMemo(() => {
-    const m = new Map();
-    for (const item of items) {
-      const arr = m.get(item.orderId) || [];
-      arr.push(item);
-      m.set(item.orderId, arr);
+  const stats = useMemo(() => {
+    const total = orders.length;
+    const pending = orders.filter((o) => o.status === "pending").length;
+    const paid = orders.filter((o) => o.status === "paid").length;
+    const shipped = orders.filter((o) => o.status === "shipped").length;
+    const delivered = orders.filter((o) => o.status === "delivered").length;
+    const cancelled = orders.filter((o) => o.status === "cancelled").length;
+
+    return { total, pending, paid, shipped, delivered, cancelled };
+  }, [orders]);
+
+  function ensureAdmin() {
+    if (!user || user.roleId !== 1) {
+      setMessage("You do not have admin permissions.");
+      return false;
     }
-    return m;
-  }, [items]);
+    return true;
+  }
 
-  async function handleDownloadInvoice(orderId) {
-    setMessage("");
-    setDownloadingId(orderId);
-
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("token")
-        : null;
-
-    if (!token) {
-      router.push("/login?next=/admin/orders");
-      setDownloadingId(null);
+  // Fetch details (items) for one order when expanded
+  async function handleToggleExpand(orderId) {
+    if (expandedId === orderId) {
+      setExpandedId(null);
       return;
     }
 
+    setExpandedId(orderId);
+
+    // If already loaded, just expand
+    if (detailsById[orderId]) return;
+
     try {
-      const res = await fetch(`${apiBase}/orders/${orderId}/invoice`, {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      if (!token) {
+        setMessage("Please login as admin.");
+        return;
+      }
+
+      const res = await fetch(`${apiBase}/orders/${orderId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
       if (!res.ok) {
+        let msg = "Failed to load order details.";
         try {
           const ct = res.headers.get("content-type") || "";
           if (ct.includes("application/json")) {
-            const errData = await res.json();
-            setMessage(errData.message || "Failed to download invoice.");
-          } else {
-            setMessage("Failed to download invoice.");
+            const json = await res.json();
+            if (json && json.message) msg = json.message;
           }
         } catch {
-          setMessage("Failed to download invoice.");
+          // ignore
         }
-        setDownloadingId(null);
+        setMessage(msg);
+        return;
+      }
+
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        setMessage("Unexpected response while loading order details.");
+        return;
+      }
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        setMessage("Could not decode order details.");
+        return;
+      }
+
+      if (!data || !Array.isArray(data.items)) {
+        setMessage("Order details format is invalid.");
+        return;
+      }
+
+      setDetailsById((prev) => ({
+        ...prev,
+        [orderId]: data,
+      }));
+    } catch (err) {
+      console.error("Admin load order details error:", err);
+      setMessage("Failed to load order details.");
+    }
+  }
+
+  // Update status
+  async function handleChangeStatus(orderId, newStatus) {
+    if (!ensureAdmin()) return;
+
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      if (!token) {
+        setMessage("Please login as admin.");
+        return;
+      }
+
+      setStatusUpdatingId(orderId);
+      setMessage("");
+
+      const res = await fetch(`${apiBase}/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const ct = res.headers.get("content-type") || "";
+      let data = null;
+      if (ct.includes("application/json")) {
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!res.ok) {
+        console.error("Status update failed:", res.status, data);
+        const msg =
+          (data && data.message) ||
+          "Failed to update order status. Please try again.";
+        setMessage(msg);
+        if (typeof window !== "undefined") window.alert(msg);
+        return;
+      }
+
+      // Update local state
+      const updatedOrder = data && data.order ? data.order : null;
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: updatedOrder?.status || newStatus } : o
+        )
+      );
+
+      // Also update expanded details if present
+      setDetailsById((prev) => {
+        const current = prev[orderId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [orderId]: {
+            ...current,
+            order: {
+              ...(current.order || {}),
+              status: updatedOrder?.status || newStatus,
+            },
+          },
+        };
+      });
+
+      setMessage("Order status updated.");
+    } catch (err) {
+      console.error("Status update error:", err);
+      const msg = "Something went wrong while updating order status.";
+      setMessage(msg);
+      if (typeof window !== "undefined") window.alert(msg);
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  }
+
+  // Download invoice
+  async function handleDownloadInvoice(orderId) {
+    if (!ensureAdmin()) return;
+
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      if (!token) {
+        setMessage("Please login as admin.");
+        return;
+      }
+
+      setInvoiceLoadingId(orderId);
+      setMessage("");
+
+      const res = await fetch(`${apiBase}/invoice/${orderId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const ct = res.headers.get("content-type") || "";
+
+      if (!res.ok) {
+        let msg = "Invoice download failed.";
+        if (ct.includes("application/json")) {
+          try {
+            const json = await res.json();
+            if (json && json.message) msg = json.message;
+          } catch {
+            // ignore
+          }
+        }
+        console.error("Invoice download failed:", res.status);
+        setMessage(msg);
+        if (typeof window !== "undefined") window.alert(msg);
+        return;
+      }
+
+      // Expect PDF (application/pdf)
+      if (!ct.includes("application/pdf")) {
+        // Might be some unexpected content – try to parse error
+        setMessage("Unexpected invoice response.");
+        if (typeof window !== "undefined")
+          window.alert("Unexpected invoice response from server.");
         return;
       }
 
@@ -187,25 +361,26 @@ export default function AdminOrdersPage() {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = `order-${orderId}-invoice.pdf`;
+      a.download = `invoice_${orderId}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Admin invoice download error:", err);
-      setMessage("Failed to download invoice.");
+      console.error("Invoice download error:", err);
+      const msg = "Invoice download failed. Please try again.";
+      setMessage(msg);
+      if (typeof window !== "undefined") window.alert(msg);
     } finally {
-      setDownloadingId(null);
+      setInvoiceLoadingId(null);
     }
   }
 
+  // AUTH gates
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-500">
-          Checking your admin access…
-        </p>
+        <p className="text-sm text-gray-500">Checking admin access…</p>
       </SiteLayout>
     );
   }
@@ -214,24 +389,24 @@ export default function AdminOrdersPage() {
     return (
       <SiteLayout>
         <div className="space-y-4">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
             Admin · Orders
           </h1>
-          <p className="text-sm text-gray-600">
-            You need to be logged in as admin to view all orders.
+          <p className="text-sm text-gray-600 max-w-sm">
+            You need to be logged in as an admin to manage orders.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/login?next=/admin/orders"
+              href="/login"
               className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
             >
               Login
             </Link>
             <Link
-              href="/"
-              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-medium uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
+              href="/register"
+              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
             >
-              Back to home
+              Sign up
             </Link>
           </div>
         </div>
@@ -243,7 +418,7 @@ export default function AdminOrdersPage() {
     return (
       <SiteLayout>
         <div className="space-y-3">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
             Admin · Orders
           </h1>
           <p className="text-sm text-gray-600">
@@ -251,7 +426,7 @@ export default function AdminOrdersPage() {
           </p>
           <Link
             href="/"
-            className="inline-flex text-[11px] text-gray-700 underline underline-offset-4 mt-2"
+            className="inline-flex text-xs text-gray-800 underline underline-offset-4 mt-2"
           >
             Back to homepage
           </Link>
@@ -264,17 +439,17 @@ export default function AdminOrdersPage() {
     <SiteLayout>
       <div className="space-y-6">
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
-              SNEAKS-UP · Admin
+            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+              Sneaks-up · Admin
             </p>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
-              All orders
+            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+              Orders overview
             </h1>
             <p className="text-xs text-gray-500 mt-1">
-              View every order placed across SNEAKS-UP, with totals and
-              line items.
+              Track every pair leaving the SNEAKS-UP vault. Update status and
+              export invoices in one place.
             </p>
           </div>
           <Link
@@ -283,155 +458,239 @@ export default function AdminOrdersPage() {
           >
             Back to admin dashboard
           </Link>
-        </header>
+        </div>
 
+        {/* Stats */}
+        <div className="grid gap-4 sm:grid-cols-5">
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Total
+            </p>
+            <p className="mt-2 text-xl font-semibold text-gray-900">
+              {stats.total}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">All orders</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Pending
+            </p>
+            <p className="mt-2 text-xl font-semibold text-amber-700">
+              {stats.pending}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">Awaiting payment</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Paid
+            </p>
+            <p className="mt-2 text-xl font-semibold text-emerald-700">
+              {stats.paid}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">Ready to ship</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Shipped
+            </p>
+            <p className="mt-2 text-xl font-semibold text-blue-700">
+              {stats.shipped}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">On the way</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Delivered
+            </p>
+            <p className="mt-2 text-xl font-semibold text-purple-700">
+              {stats.delivered}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">On feet</p>
+          </div>
+        </div>
+
+        {/* Messages */}
         {message && (
-          <p className="text-xs text-gray-700">{message}</p>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-700">
+            {message}
+          </div>
         )}
 
-        {/* Orders list */}
-        {loadingData ? (
-          <p className="text-sm text-gray-500">Loading orders…</p>
-        ) : orders.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center space-y-2">
-            <p className="text-sm font-medium text-gray-800">
-              No orders yet.
+        {/* List of orders */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-900">
+              All store orders
             </p>
-            <p className="text-xs text-gray-500">
-              As users place orders, they will appear here.
+            <p className="text-[11px] text-gray-500">
+              {orders.length} record{orders.length === 1 ? "" : "s"}
             </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((order) => {
-              const orderItems = itemsByOrderId.get(order.id) || [];
-              const created =
-                order.createdAt || order.created_at || null;
-              const total =
-                typeof order.total === "string"
-                  ? order.total
-                  : order.total?.toString() ?? "0.00";
 
-              return (
-                <div
-                  key={order.id}
-                  className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm space-y-3"
-                >
-                  {/* Order header */}
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold text-gray-900">
-                        Order #{order.id}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        User ID:{" "}
-                        <span className="font-medium text-gray-900">
-                          {order.userId}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Total:{" "}
-                        <span className="font-medium text-gray-900">
-                          ${Number(total || 0).toFixed(2)}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        Created:{" "}
-                        {created
-                          ? new Date(created).toLocaleString()
-                          : "Unknown"}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] ${
-                          order.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : order.status === "cancelled"
-                            ? "bg-red-100 text-red-600"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {order.status || "pending"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDownloadInvoice(order.id)
-                        }
-                        disabled={downloadingId === order.id}
-                        className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-3 py-1.5 text-[11px] font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {downloadingId === order.id
-                          ? "Preparing invoice…"
-                          : "Download invoice"}
-                      </button>
-                    </div>
-                  </div>
+          {loading ? (
+            <p className="text-sm text-gray-500">Loading orders…</p>
+          ) : orders.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No orders yet. Once customers check out, they will show up here.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {orders.map((order) => {
+                const isExpanded = expandedId === order.id;
+                const statusClass = statusBadgeClasses(order.status);
+                const orderDetails = detailsById[order.id];
+                const items = orderDetails?.items || [];
 
-                  {/* Items */}
-                  {orderItems.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-gray-100">
-                      {orderItems.map((item) => {
-                        const p = productsMap.get(item.productId);
-                        const name =
-                          p?.name ||
-                          item.productName ||
-                          `Product #${item.productId}`;
-                        const unitPrice = Number(
-                          item.unitPrice ??
-                            item.price ??
-                            p?.price ??
-                            0
-                        );
-                        const lineTotal =
-                          unitPrice * (item.quantity || 0);
-                        const imageUrl =
-                          p?.imageUrl || item.productImageUrl || null;
-                        const imageSrc = imageUrl
-                          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${imageUrl}`
-                          : null;
-
-                        return (
-                          <div
-                            key={item.id}
-                            className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-3xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm"
+                  >
+                    {/* Top row: summary */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900">
+                            Order #{order.id}
+                          </p>
+                          <span
+                            className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.16em] ${statusClass}`}
                           >
-                            <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
-                              {imageSrc ? (
-                                <img
-                                  src={imageSrc}
-                                  alt={name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-[9px] tracking-[0.2em] text-gray-500 uppercase">
-                                  Sneaks
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-0.5">
-                              <p className="text-xs font-medium text-gray-900 truncate">
-                                {name}
-                              </p>
-                              <p className="text-[11px] text-gray-500">
-                                Qty: {item.quantity} · $
-                                {unitPrice.toFixed(2)} each
-                              </p>
-                            </div>
-                            <div className="text-xs font-semibold text-gray-900">
-                              ${lineTotal.toFixed(2)}
-                            </div>
-                          </div>
-                        );
-                      })}
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                          User ID:{" "}
+                          <span className="font-medium text-gray-800">
+                            {order.userId}
+                          </span>
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          Created:{" "}
+                          <span className="font-medium text-gray-800">
+                            {order.createdAt
+                              ? new Date(order.createdAt).toLocaleString()
+                              : "N/A"}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="text-sm font-semibold text-gray-900">
+                          ${Number(order.total || 0).toFixed(2)}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Status change */}
+                          <select
+                            value={order.status}
+                            onChange={(e) =>
+                              handleChangeStatus(order.id, e.target.value)
+                            }
+                            disabled={statusUpdatingId === order.id}
+                            className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/30"
+                          >
+                            {STATUS_OPTIONS.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Download invoice */}
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadInvoice(order.id)}
+                            disabled={invoiceLoadingId === order.id}
+                            className="rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] px-3.5 py-1.75 hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {invoiceLoadingId === order.id
+                              ? "Preparing…"
+                              : "Invoice"}
+                          </button>
+
+                          {/* Expand details */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleExpand(order.id)}
+                            className="rounded-full border border-gray-300 bg-white px-3 py-1.75 text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
+                          >
+                            {isExpanded ? "Hide items" : "View items"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+
+                    {/* Expanded items */}
+                    {isExpanded && (
+                      <div className="mt-4 border-t border-gray-100 pt-3">
+                        {orderDetails == null ? (
+                          <p className="text-xs text-gray-500">
+                            Loading items…
+                          </p>
+                        ) : items.length === 0 ? (
+                          <p className="text-xs text-gray-500">
+                            No items found for this order.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {items.map((item) => {
+                              const p = productsMap.get(item.productId);
+                              const unitPrice = Number(
+                                item.unitPrice || 0
+                              );
+                              const lineTotal =
+                                unitPrice * (item.quantity || 0);
+                              const imageUrl = p?.imageUrl
+                                ? `${apiBase}${p.imageUrl}`
+                                : null;
+
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5"
+                                >
+                                  <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                                    {imageUrl ? (
+                                      <img
+                                        src={imageUrl}
+                                        alt={
+                                          p?.name ||
+                                          `Product #${item.productId}`
+                                        }
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <span className="text-[9px] uppercase tracking-[0.18em] text-gray-400">
+                                        Sneaks
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 space-y-0.5">
+                                    <p className="text-xs font-semibold text-gray-900">
+                                      {p
+                                        ? p.name
+                                        : `Product #${item.productId}`}
+                                    </p>
+                                    <p className="text-[11px] text-gray-500">
+                                      Qty: {item.quantity} · $
+                                      {unitPrice.toFixed(2)} each
+                                    </p>
+                                  </div>
+                                  <div className="text-xs font-semibold text-gray-900">
+                                    ${lineTotal.toFixed(2)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </SiteLayout>
   );

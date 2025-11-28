@@ -19,10 +19,39 @@ export default function RegisterPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const nextPath = searchParams.get("next") || "/";
 
+  function validateForm() {
+    if (!fullName.trim()) {
+      return "Please enter your full name.";
+    }
+    if (fullName.trim().length < 2) {
+      return "Your name should be at least 2 characters.";
+    }
+    if (!email.trim()) {
+      return "Please enter your email address.";
+    }
+    if (!email.includes("@") || !email.includes(".")) {
+      return "Please enter a valid email address.";
+    }
+    if (!password.trim()) {
+      return "Please choose a password.";
+    }
+    if (password.length < 6) {
+      return "Password should be at least 6 characters long.";
+    }
+    return null;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setMessage("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setMessage(validationError);
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
@@ -62,18 +91,12 @@ export default function RegisterPage() {
         return;
       }
 
-      // 🔐 SAFE CALL TO login() – supports both signatures
+      // Auto-login after signup
       try {
-        if (login.length >= 2) {
-          // login(token, user)
-          login(data.token, data.user);
-        } else {
-          // login({ token, user }) or similar
-          login({ token: data.token, user: data.user });
-        }
+        login(data.token, data.user);
       } catch (err) {
         console.error("AuthContext login error:", err);
-        setMessage("Invalid data returned from server.");
+        setMessage("Something went wrong while saving your session.");
         setSubmitting(false);
         return;
       }
@@ -81,7 +104,7 @@ export default function RegisterPage() {
       router.push(nextPath);
     } catch (err) {
       console.error("Register error:", err);
-      setMessage("An unexpected error occurred.");
+      setMessage("An unexpected error occurred. Please try again.");
       setSubmitting(false);
     }
   }
@@ -106,6 +129,13 @@ export default function RegisterPage() {
                 tracking orders.
               </p>
             </div>
+
+            {/* Error box */}
+            {message && (
+              <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                {message}
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -151,10 +181,6 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {message && (
-                <p className="text-xs text-red-400 pt-1">{message}</p>
-              )}
-
               <button
                 type="submit"
                 disabled={submitting}
@@ -176,8 +202,7 @@ export default function RegisterPage() {
             </div>
 
             <p className="text-[10px] text-gray-500 pt-1">
-              New users are stored in Neon PostgreSQL via Drizzle ORM, with
-              passwords hashed using bcrypt and JWT-based auth.
+              Your password is stored hashed on the server for security.
             </p>
           </div>
         </div>

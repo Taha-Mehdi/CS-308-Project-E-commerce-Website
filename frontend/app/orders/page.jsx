@@ -2,29 +2,41 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
 
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+function statusBadgeClasses(status) {
+  switch (status) {
+    case "paid":
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+    case "shipped":
+      return "bg-blue-50 text-blue-700 border border-blue-200";
+    case "delivered":
+      return "bg-purple-50 text-purple-700 border border-purple-200";
+    case "cancelled":
+      return "bg-red-50 text-red-700 border border-red-200";
+    case "pending":
+    default:
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+}
+
 export default function OrdersPage() {
   const { user, loadingUser } = useAuth();
-  const router = useRouter();
 
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([]);
   const [products, setProducts] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [downloadingId, setDownloadingId] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  // Load orders + items + products
+  // Load user orders + items + products
   useEffect(() => {
     async function loadAll() {
-      if (!user) return;
-
-      setLoadingData(true);
+      setLoading(true);
       setMessage("");
 
       try {
@@ -37,88 +49,90 @@ export default function OrdersPage() {
           setOrders([]);
           setItems([]);
           setProducts([]);
-          setLoadingData(false);
+          setLoading(false);
           return;
         }
 
-        // 1) Orders for this user
-        const ordersRes = await fetch(`${apiBase}/orders/my`, {
+        // 1) User's own orders
+        const res = await fetch(`${apiBase}/orders/my`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
-        if (ordersRes.ok) {
-          const ct = ordersRes.headers.get("content-type") || "";
+        if (!res.ok) {
+          let msg = "Failed to load your orders.";
+          const ct = res.headers.get("content-type") || "";
           if (ct.includes("application/json")) {
-            let odata = null;
             try {
-              odata = await ordersRes.json();
+              const errJson = await res.json();
+              if (errJson && errJson.message) msg = errJson.message;
             } catch {
-              odata = null;
+              // ignore
             }
-            if (odata && typeof odata === "object") {
-              setOrders(Array.isArray(odata.orders) ? odata.orders : []);
-              setItems(Array.isArray(odata.items) ? odata.items : []);
-            } else if (Array.isArray(odata)) {
-              // fallback shape
-              setOrders(odata);
+          }
+          setMessage(msg);
+          setOrders([]);
+          setItems([]);
+        } else {
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            try {
+              const data = await res.json();
+              if (Array.isArray(data)) {
+                setOrders(data);
+                setItems([]);
+              } else {
+                setOrders(Array.isArray(data.orders) ? data.orders : []);
+                setItems(Array.isArray(data.items) ? data.items : []);
+              }
+            } catch {
+              setOrders([]);
               setItems([]);
+              setMessage("Could not decode orders response.");
             }
           } else {
             setOrders([]);
             setItems([]);
-          }
-        } else {
-          setOrders([]);
-          setItems([]);
-          try {
-            const ct = ordersRes.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              const errData = await ordersRes.json();
-              setMessage(errData.message || "Failed to load orders.");
-            } else {
-              setMessage("Failed to load orders.");
-            }
-          } catch {
-            setMessage("Failed to load orders.");
+            setMessage("Unexpected response while loading orders.");
           }
         }
 
-        // 2) Products for names/images
-        try {
-          const prodRes = await fetch(`${apiBase}/products`);
-          if (prodRes.ok) {
-            const ct2 = prodRes.headers.get("content-type") || "";
-            if (ct2.includes("application/json")) {
-              const pdata = await prodRes.json();
-              setProducts(Array.isArray(pdata) ? pdata : []);
-            } else {
+        // 2) Products (for name + image)
+        const prodRes = await fetch(`${apiBase}/products`);
+        if (prodRes.ok) {
+          const ct = prodRes.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            try {
+              const prodData = await prodRes.json();
+              setProducts(Array.isArray(prodData) ? prodData : []);
+            } catch {
               setProducts([]);
             }
           } else {
             setProducts([]);
           }
-        } catch {
+        } else {
           setProducts([]);
         }
       } catch (err) {
-        console.error("Orders load error:", err);
+        console.error("Orders page load error:", err);
         setOrders([]);
         setItems([]);
         setProducts([]);
         setMessage("Failed to load orders.");
       } finally {
-        setLoadingData(false);
+        setLoading(false);
       }
     }
 
     if (!loadingUser && user) {
       loadAll();
+    } else if (!loadingUser) {
+      setLoading(false);
     }
   }, [apiBase, loadingUser, user]);
 
-  // Build maps for quick lookup
   const productsMap = useMemo(() => {
     const m = new Map();
     for (const p of products) {
@@ -128,51 +142,72 @@ export default function OrdersPage() {
   }, [products]);
 
   const itemsByOrderId = useMemo(() => {
-    const m = new Map();
+    const grouped = new Map();
     for (const item of items) {
-      const arr = m.get(item.orderId) || [];
+      const arr = grouped.get(item.orderId) || [];
       arr.push(item);
-      m.set(item.orderId, arr);
+      grouped.set(item.orderId, arr);
     }
-    return m;
+    return grouped;
   }, [items]);
 
-  // Download invoice
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return db - da;
+    });
+  }, [orders]);
+
   async function handleDownloadInvoice(orderId) {
-    setMessage("");
-    setDownloadingId(orderId);
-
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("token")
-        : null;
-
-    if (!token) {
-      router.push("/login?next=/orders");
-      setDownloadingId(null);
-      return;
-    }
-
     try {
-      const res = await fetch(`${apiBase}/orders/${orderId}/invoice`, {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("token")
+          : null;
+
+      if (!token) {
+        setMessage("Please login again to download invoices.");
+        if (typeof window !== "undefined") {
+          window.alert("Please login again to download invoices.");
+        }
+        return;
+      }
+
+      setInvoiceLoadingId(orderId);
+      setMessage("");
+
+      const res = await fetch(`${apiBase}/invoice/${orderId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
+      const ct = res.headers.get("content-type") || "";
+
       if (!res.ok) {
-        try {
-          const ct = res.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            const errData = await res.json();
-            setMessage(errData.message || "Failed to download invoice.");
-          } else {
-            setMessage("Failed to download invoice.");
+        let msg = "Invoice download failed.";
+        if (ct.includes("application/json")) {
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.message) msg = errJson.message;
+          } catch {
+            // ignore
           }
-        } catch {
-          setMessage("Failed to download invoice.");
         }
-        setDownloadingId(null);
+        console.error("Invoice download failed:", res.status);
+        setMessage(msg);
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
+        return;
+      }
+
+      if (!ct.includes("application/pdf")) {
+        setMessage("Unexpected response when downloading invoice.");
+        if (typeof window !== "undefined") {
+          window.alert("Unexpected response from server for invoice.");
+        }
         return;
       }
 
@@ -181,25 +216,28 @@ export default function OrdersPage() {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = `order-${orderId}-invoice.pdf`;
+      a.download = `invoice_${orderId}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Invoice download error:", err);
-      setMessage("Failed to download invoice.");
+      const msg = "Invoice download failed. Please try again.";
+      setMessage(msg);
+      if (typeof window !== "undefined") {
+        window.alert(msg);
+      }
     } finally {
-      setDownloadingId(null);
+      setInvoiceLoadingId(null);
     }
   }
 
+  // AUTH gates
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-500">
-          Checking your session…
-        </p>
+        <p className="text-sm text-gray-500">Checking your account…</p>
       </SiteLayout>
     );
   }
@@ -208,24 +246,29 @@ export default function OrdersPage() {
     return (
       <SiteLayout>
         <div className="space-y-4">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
-            Orders
-          </h1>
-          <p className="text-sm text-gray-600">
-            You need to be logged in to view your orders.
-          </p>
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+              Sneaks-up
+            </p>
+            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+              Your orders
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Login to see your sneaker history, statuses, and invoices.
+            </p>
+          </div>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/login?next=/orders"
+              href="/login"
               className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
             >
               Login
             </Link>
             <Link
               href="/register"
-              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-medium uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
+              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
             >
-              Sign up
+              Create account
             </Link>
           </div>
         </div>
@@ -233,159 +276,150 @@ export default function OrdersPage() {
     );
   }
 
+  // Logged-in UI
   return (
     <SiteLayout>
       <div className="space-y-6">
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">
-              SNEAKS-UP
+            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+              Sneaks-up
             </p>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
-              Order history
+            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+              Your orders
             </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              View your previous drops, totals, and invoices.
+            <p className="text-sm text-gray-600 mt-1">
+              Every drop you&apos;ve locked in with{" "}
+              <span className="font-medium text-gray-900">
+                {user.email}
+              </span>
+              .
             </p>
           </div>
           <Link
             href="/products"
-            className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black"
+            className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
           >
             Back to drops
           </Link>
-        </header>
+        </div>
 
         {message && (
-          <p className="text-xs text-gray-700">{message}</p>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-700">
+            {message}
+          </div>
         )}
 
-        {/* Orders list */}
-        {loadingData ? (
-          <p className="text-sm text-gray-500">Loading orders…</p>
-        ) : orders.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center space-y-2">
-            <p className="text-sm font-medium text-gray-800">
-              No orders yet.
-            </p>
-            <p className="text-xs text-gray-500">
-              When you check out from your bag, your orders will appear
-              here.
+        {loading ? (
+          <p className="text-sm text-gray-500">Loading your orders…</p>
+        ) : sortedOrders.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              You haven&apos;t placed any orders yet.
             </p>
             <Link
               href="/products"
-              className="inline-flex mt-2 px-4 py-2 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
+              className="inline-flex px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
             >
               Browse drops
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => {
+            {sortedOrders.map((order) => {
+              const badgeClass = statusBadgeClasses(order.status);
               const orderItems = itemsByOrderId.get(order.id) || [];
-              const created =
-                order.createdAt || order.created_at || null;
-              const total =
-                typeof order.total === "string"
-                  ? order.total
-                  : order.total?.toString() ?? "0.00";
 
               return (
                 <div
                   key={order.id}
-                  className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm space-y-3"
+                  className="rounded-3xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm space-y-4"
                 >
-                  {/* Order header */}
+                  {/* Order summary */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
-                      <p className="text-sm font-semibold text-gray-900">
-                        Order #{order.id}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Total:{" "}
-                        <span className="font-medium text-gray-900">
-                          ${Number(total || 0).toFixed(2)}
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-900">
+                          Order #{order.id}
+                        </p>
+                        <span
+                          className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.16em] ${badgeClass}`}
+                        >
+                          {order.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500">
+                        Placed:{" "}
+                        <span className="font-medium text-gray-800">
+                          {order.createdAt
+                            ? new Date(order.createdAt).toLocaleString()
+                            : "N/A"}
                         </span>
                       </p>
-                      <p className="text-xs text-gray-400">
-                        Placed:{" "}
-                        {created
-                          ? new Date(created).toLocaleString()
-                          : "Unknown"}
-                      </p>
                     </div>
+
                     <div className="flex flex-col items-end gap-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] ${
-                          order.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : order.status === "cancelled"
-                            ? "bg-red-100 text-red-600"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {order.status || "pending"}
-                      </span>
+                      <p className="text-sm font-semibold text-gray-900">
+                        Total: ${Number(order.total || 0).toFixed(2)}
+                      </p>
                       <button
                         type="button"
-                        onClick={() =>
-                          handleDownloadInvoice(order.id)
-                        }
-                        disabled={downloadingId === order.id}
-                        className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-3 py-1.5 text-[11px] font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                        onClick={() => handleDownloadInvoice(order.id)}
+                        disabled={invoiceLoadingId === order.id}
+                        className="rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] px-3.5 py-1.75 hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                       >
-                        {downloadingId === order.id
-                          ? "Preparing invoice…"
+                        {invoiceLoadingId === order.id
+                          ? "Preparing…"
                           : "Download invoice"}
                       </button>
                     </div>
                   </div>
 
-                  {/* Items list */}
-                  {orderItems.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                  {/* Items */}
+                  {orderItems.length === 0 ? (
+                    <p className="text-xs text-gray-500">
+                      No item details available for this order.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
                       {orderItems.map((item) => {
                         const p = productsMap.get(item.productId);
-                        const name =
-                          p?.name ||
-                          item.productName ||
-                          `Product #${item.productId}`;
-                        const unitPrice = Number(
-                          item.unitPrice ??
-                            item.price ??
-                            p?.price ??
-                            0
-                        );
+                        const unitPrice = Number(item.unitPrice || 0);
                         const lineTotal =
                           unitPrice * (item.quantity || 0);
-                        const imageUrl =
-                          p?.imageUrl || item.productImageUrl || null;
-                        const imageSrc = imageUrl
-                          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${imageUrl}`
+                        const imageUrl = p?.imageUrl
+                          ? `${apiBase}${p.imageUrl}`
                           : null;
 
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+                            className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5"
                           >
-                            <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
-                              {imageSrc ? (
+                            {/* SQUARE IMAGE THUMBNAIL */}
+                            <div className="w-20 sm:w-24 aspect-square rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                              {imageUrl ? (
                                 <img
-                                  src={imageSrc}
-                                  alt={name}
+                                  src={imageUrl}
+                                  alt={
+                                    p?.name ||
+                                    `Product #${item.productId}`
+                                  }
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <span className="text-[9px] tracking-[0.2em] text-gray-500 uppercase">
-                                  Sneaks
+                                <span className="text-[9px] uppercase tracking-[0.18em] text-gray-400 text-center px-2">
+                                  Sneaks-up drop
                                 </span>
                               )}
                             </div>
-                            <div className="flex-1 min-w-0 space-y-0.5">
-                              <p className="text-xs font-medium text-gray-900 truncate">
-                                {name}
+
+                            <div className="flex-1 space-y-0.5">
+                              <p className="text-xs font-semibold text-gray-900">
+                                {p
+                                  ? p.name
+                                  : `Product #${item.productId}`}
                               </p>
                               <p className="text-[11px] text-gray-500">
                                 Qty: {item.quantity} · $

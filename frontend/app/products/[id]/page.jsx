@@ -2,67 +2,102 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function ProductDetailPage() {
-  const { id } = useParams();
+  const { user } = useAuth(); // only need user; token comes from localStorage
+  const params = useParams();
   const router = useRouter();
-
-  const [product, setProduct] = useState(null);
-  const [quantity, setQuantity] = useState(1);
-  const [loadingProduct, setLoadingProduct] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
+  const productId = params?.id;
 
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+  const [product, setProduct] = useState(null);
+  const [loadingProduct, setLoadingProduct] = useState(true);
+  const [quantity, setQuantity] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+
+  // Load single product
   useEffect(() => {
+    if (!productId) return;
+
     async function loadProduct() {
-      if (!id) return;
       setLoadingProduct(true);
       setMessage("");
 
       try {
-        const res = await fetch(`${apiBase}/products/${id}`);
-        const data = await res.json();
+        const res = await fetch(`${apiBase}/products/${productId}`);
 
         if (!res.ok) {
           setProduct(null);
-          setMessage(data.message || "Failed to load product.");
+          setMessage("Failed to load product.");
+          setMessageType("error");
+          setLoadingProduct(false);
+          return;
+        }
+
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          setProduct(null);
+          setMessage("Unexpected response from server.");
+          setMessageType("error");
+          setLoadingProduct(false);
+          return;
+        }
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+
+        if (!data || !data.id) {
+          setProduct(null);
+          setMessage("Product not found.");
+          setMessageType("error");
         } else {
           setProduct(data);
+          setMessage("");
         }
       } catch (err) {
-        console.error("Product load error:", err);
+        console.error("Product detail load error:", err);
         setProduct(null);
         setMessage("Failed to load product.");
+        setMessageType("error");
       } finally {
         setLoadingProduct(false);
       }
     }
 
     loadProduct();
-  }, [apiBase, id]);
+  }, [apiBase, productId]);
 
-  function handleQuantityChange(delta) {
-    setQuantity((prev) => {
-      const next = prev + delta;
-      if (next < 1) return 1;
-      return next;
-    });
+  function handleQuantityChange(e) {
+    const value = Number(e.target.value);
+    if (Number.isNaN(value)) return;
+    if (value < 1) setQuantity(1);
+    else if (value > 99) setQuantity(99);
+    else setQuantity(value);
   }
 
   async function handleAddToCart() {
     setMessage("");
+    setMessageType("info");
 
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("token")
-        : null;
+    // get token exactly like other pages
+    let authToken = null;
+    if (typeof window !== "undefined") {
+      authToken = localStorage.getItem("token") || null;
+    }
 
-    if (!token) {
-      // redirect to login with next=product page
-      router.push(`/login?next=${encodeURIComponent(`/products/${id}`)}`);
+    if (!user || !authToken) {
+      setMessage("Please log in to add items to your bag.");
+      setMessageType("error");
       return;
     }
 
@@ -70,180 +105,207 @@ export default function ProductDetailPage() {
 
     setSubmitting(true);
     try {
+      const body = {
+        productId: Number(product.id),
+        quantity: Number(quantity),
+      };
+
+      // IMPORTANT: backend is POST /cart/add
       const res = await fetch(`${apiBase}/cart/add`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({
-          productId: product.id,
-          quantity,
-        }),
+        body: JSON.stringify(body),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data = null;
+      let rawText = "";
 
-      if (!res.ok) {
-        setMessage(data.message || "Failed to add to bag.");
+      if (contentType.includes("application/json")) {
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
       } else {
-        setMessage("Added to your bag.");
-        // Notify navbar/cart count
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("cart-updated"));
+        try {
+          rawText = await res.text();
+        } catch {
+          rawText = "";
         }
       }
+
+      if (!res.ok) {
+        console.error("Add to cart failed:", {
+          status: res.status,
+          data,
+          rawText,
+        });
+
+        const backendMessage =
+          (data && data.message) || (rawText ? rawText : null);
+
+        setMessage(
+          backendMessage ||
+            `Could not add this pair to your bag (status ${res.status}).`
+        );
+        setMessageType("error");
+        return;
+      }
+
+      // update navbar cart badge
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("cart-updated"));
+      }
+
+      setMessage("Added to your bag.");
+      setMessageType("success");
     } catch (err) {
       console.error("Add to cart error:", err);
-      setMessage("Failed to add to bag.");
+      setMessage("Something went wrong. Please try again.");
+      setMessageType("error");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const hasImage = product?.imageUrl;
-  const imageSrc =
-    hasImage && product
-      ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${product.imageUrl}`
-      : null;
+  const price = product ? Number(product.price || 0) : 0;
+  const imageUrl =
+    product && product.imageUrl ? `${apiBase}${product.imageUrl}` : null;
 
   return (
     <SiteLayout>
       <div className="space-y-6">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-[11px] text-gray-500 uppercase tracking-[0.18em]">
+        {/* Breadcrumb + back link */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[11px] text-gray-500">
+            <Link
+              href="/"
+              className="hover:text-gray-800 hover:underline underline-offset-4"
+            >
+              Home
+            </Link>
+            <span>/</span>
+            <Link
+              href="/products"
+              className="hover:text-gray-800 hover:underline underline-offset-4"
+            >
+              Drops
+            </Link>
+            <span>/</span>
+            <span className="text-gray-800">
+              {product ? product.name : "Pair"}
+            </span>
+          </div>
           <button
             type="button"
-            onClick={() => router.push("/products")}
-            className="hover:text-black"
+            onClick={() => router.back()}
+            className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black"
           >
-            Drops
+            Back
           </button>
-          <span>/</span>
-          <span className="text-gray-800">
-            {product?.name ? product.name : "Loading"}
-          </span>
         </div>
 
-        {/* Main content */}
         {loadingProduct ? (
-          <p className="text-sm text-gray-500">Loading product…</p>
+          <p className="text-sm text-gray-500">Loading pair…</p>
         ) : !product ? (
           <p className="text-sm text-gray-500">
-            Product not found or unavailable.
+            We couldn&apos;t find this pair. It might have been removed.
           </p>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 items-start">
-            {/* Left: hero image */}
-            <div className="rounded-3xl bg-white border border-gray-200/70 shadow-sm overflow-hidden">
-              <div className="relative">
-                <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center overflow-hidden">
-                  {imageSrc ? (
-                    <img
-                      src={imageSrc}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[11px] tracking-[0.2em] text-gray-500 uppercase">
-                      Sneaks-Up
-                    </span>
-                  )}
-                </div>
-                {/* Simple overlay label */}
-                <div className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1">
-                  <span className="text-[11px] font-semibold text-white uppercase tracking-[0.16em]">
-                    Sneaks-Up Drop
+          <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
+            {/* Left: image */}
+            <div className="rounded-3xl bg-white border border-gray-200 overflow-hidden">
+              <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[11px] uppercase tracking-[0.24em] text-gray-400">
+                    Sneaks-up
                   </span>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Right: product info */}
+            {/* Right: details */}
             <div className="space-y-5">
-              <div className="space-y-2">
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+                  Drop
+                </p>
+                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
                   {product.name}
                 </h1>
+              </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-semibold text-gray-900">
-                    ${product.price}
-                  </span>
-                  <span
-                    className={`text-[11px] font-medium uppercase tracking-[0.18em] px-3 py-1 rounded-full ${
-                      (product.stock || 0) > 0
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-red-100 text-red-600"
-                    }`}
-                  >
-                    {(product.stock || 0) > 0
+              <div className="space-y-2">
+                <p className="text-lg sm:text-xl font-semibold text-gray-900">
+                  ${price.toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {typeof product.stock === "number"
+                    ? product.stock > 0
                       ? `${product.stock} in stock`
-                      : "Sold out"}
-                  </span>
-                </div>
+                      : "Out of stock"
+                    : "Limited availability"}
+                </p>
               </div>
 
               {product.description && (
-                <p className="text-sm text-gray-600 leading-relaxed">
+                <p className="text-sm text-gray-700 leading-relaxed">
                   {product.description}
                 </p>
               )}
 
-              {/* Quantity + actions */}
-              {(product.stock || 0) > 0 && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <p className="text-[11px] text-gray-600 uppercase tracking-[0.18em]">
-                      Quantity
-                    </p>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleQuantityChange(-1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 text-sm text-gray-800 hover:bg-gray-100"
-                      >
-                        –
-                      </button>
-                      <span className="w-8 text-center text-sm font-medium text-gray-900">
-                        {quantity}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleQuantityChange(1)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 text-sm text-gray-800 hover:bg-gray-100"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleAddToCart}
-                    disabled={submitting}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {submitting ? "Adding…" : "Add to bag"}
-                  </button>
+              {/* Add to bag controls */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-[11px] text-gray-500 uppercase tracking-[0.2em]">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={quantity}
+                    onChange={handleQuantityChange}
+                    className="w-20 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/30"
+                  />
                 </div>
-              )}
 
-              {/* System message */}
-              {message && (
-                <p className="text-xs text-gray-700 pt-1">{message}</p>
-              )}
+                <button
+                  type="button"
+                  disabled={submitting || product.stock === 0}
+                  onClick={handleAddToCart}
+                  className="w-full rounded-full bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] py-3 hover:bg-gray-900 active:bg-black disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {product.stock === 0
+                    ? "Sold out"
+                    : submitting
+                    ? "Adding…"
+                    : "Add to bag"}
+                </button>
 
-              {/* Meta info */}
-              <div className="pt-2 border-t border-gray-200 mt-4 space-y-1.5">
-                <p className="text-[11px] text-gray-500 uppercase tracking-[0.18em]">
-                  Details
-                </p>
-                <p className="text-xs text-gray-500">
-                  All data for this product is served from the Node / Express
-                  backend using Neon + Drizzle. Images are stored via the admin
-                  upload endpoint.
-                </p>
+                {message && (
+                  <p
+                    className={`text-xs ${
+                      messageType === "error"
+                        ? "text-red-600"
+                        : messageType === "success"
+                        ? "text-green-600"
+                        : "text-gray-600"
+                    }`}
+                  >
+                    {message}
+                  </p>
+                )}
               </div>
             </div>
           </div>

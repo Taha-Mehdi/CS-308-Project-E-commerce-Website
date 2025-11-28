@@ -18,10 +18,30 @@ export default function LoginPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const nextPath = searchParams.get("next") || "/";
 
+  function validateForm() {
+    if (!email.trim()) {
+      return "Please enter your email address.";
+    }
+    if (!email.includes("@") || !email.includes(".")) {
+      return "Please enter a valid email address.";
+    }
+    if (!password.trim()) {
+      return "Please enter your password.";
+    }
+    return null;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setMessage("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setMessage(validationError);
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
@@ -45,7 +65,7 @@ export default function LoginPage() {
       if (!res.ok) {
         setMessage(
           (data && data.message) ||
-            "Login failed. Check your details."
+            "Login failed. Check your email and password."
         );
         setSubmitting(false);
         return;
@@ -57,18 +77,12 @@ export default function LoginPage() {
         return;
       }
 
-      // 🔐 SAFE CALL TO login() – supports both signatures
+      // AuthContext login (expects login(token, user))
       try {
-        if (login.length >= 2) {
-          // login(token, user)
-          login(data.token, data.user);
-        } else {
-          // login({ token, user }) or similar
-          login({ token: data.token, user: data.user });
-        }
+        login(data.token, data.user);
       } catch (err) {
         console.error("AuthContext login error:", err);
-        setMessage("Invalid data returned from server.");
+        setMessage("Something went wrong while saving your session.");
         setSubmitting(false);
         return;
       }
@@ -76,7 +90,7 @@ export default function LoginPage() {
       router.push(nextPath);
     } catch (err) {
       console.error("Login error:", err);
-      setMessage("An unexpected error occurred.");
+      setMessage("An unexpected error occurred. Please try again.");
       setSubmitting(false);
     }
   }
@@ -97,10 +111,17 @@ export default function LoginPage() {
                 Sign in to your account
               </h1>
               <p className="text-xs text-gray-400">
-                Use the test credentials from your backend to access drops,
-                your bag, and order history.
+                Enter your credentials to access drops, your bag, and order
+                history.
               </p>
             </div>
+
+            {/* Error box */}
+            {message && (
+              <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                {message}
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -132,10 +153,6 @@ export default function LoginPage() {
                 />
               </div>
 
-              {message && (
-                <p className="text-xs text-red-400 pt-1">{message}</p>
-              )}
-
               <button
                 type="submit"
                 disabled={submitting}
@@ -157,8 +174,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-[10px] text-gray-500 pt-1">
-              This login connects to the Node / Express backend with JWT
-              authentication and Neon PostgreSQL.
+              Your session is secured with JWT-based authentication.
             </p>
           </div>
         </div>

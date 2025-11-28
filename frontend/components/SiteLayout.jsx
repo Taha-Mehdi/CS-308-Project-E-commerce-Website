@@ -78,7 +78,7 @@ export default function SiteLayout({ children }) {
   const navLinks = [
     { href: "/", label: "Home" },
     { href: "/products", label: "Drops" },
-    { href: "/cart", label: "Cart" },
+    { href: "/cart", label: "Bag" },
     { href: "/orders", label: "Orders", requiresAuth: true },
     { href: "/admin", label: "Admin", requiresAdmin: true },
   ];
@@ -140,13 +140,13 @@ export default function SiteLayout({ children }) {
               <>
                 <Link
                   href="/login"
-                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full bg-white text-black hover:bg-gray-100 transition-colors"
+                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full bg-white text-black hover:bg-gray-100 transition-all active:scale-[0.97]"
                 >
                   Login
                 </Link>
                 <Link
                   href="/register"
-                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-colors"
+                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
                 >
                   Get started
                 </Link>
@@ -155,13 +155,13 @@ export default function SiteLayout({ children }) {
               <>
                 <Link
                   href="/account"
-                  className="px-3.5 py-1.5 rounded-full border border-white/35 text-[11px] font-medium text-white hover:bg-white hover:text-black transition-colors"
+                  className="px-3.5 py-1.5 rounded-full border border-white/35 text-[11px] font-medium text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
                 >
                   {user.fullName || "Account"}
                 </Link>
                 <button
                   onClick={logout}
-                  className="px-3.5 py-1.5 rounded-full bg-blue-600 text-[11px] font-medium text-white hover:bg-blue-700 active:bg-blue-800 transition-colors"
+                  className="px-3.5 py-1.5 rounded-full bg-blue-600 text-[11px] font-medium text-white hover:bg-blue-700 active:bg-blue-800 transition-all active:scale-[0.97]"
                 >
                   Logout
                 </button>
@@ -192,14 +192,14 @@ export default function SiteLayout({ children }) {
                     <Link
                       href="/login"
                       onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-white text-black hover:bg-gray-100 transition-colors"
+                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-white text-black hover:bg-gray-100 transition-all active:scale-[0.97]"
                     >
                       Login
                     </Link>
                     <Link
                       href="/register"
                       onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-colors"
+                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
                     >
                       Get started
                     </Link>
@@ -209,7 +209,7 @@ export default function SiteLayout({ children }) {
                     <Link
                       href="/account"
                       onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-colors"
+                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
                     >
                       {user.fullName || "Account"}
                     </Link>
@@ -219,7 +219,7 @@ export default function SiteLayout({ children }) {
                         setMobileOpen(false);
                         logout();
                       }}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors"
+                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-all active:scale-[0.97]"
                     >
                       Logout
                     </button>
@@ -235,7 +235,10 @@ export default function SiteLayout({ children }) {
       <main className="flex-1">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="bg-[#f5f5f5] rounded-3xl shadow-sm border border-gray-200/60 px-4 sm:px-6 py-6 sm:py-8">
-            {children}
+            {/* Fade-in wrapper from UX step 1 */}
+            <div className="page-fade">
+              {children}
+            </div>
           </div>
         </div>
       </main>
@@ -244,10 +247,10 @@ export default function SiteLayout({ children }) {
       <footer className="border-t border-gray-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <p className="text-[11px] text-gray-500">
-            CS-308 · SNEAKS-UP Ecommerce Project
+            © {new Date().getFullYear()} SNEAKS-UP. All rights reserved.
           </p>
           <p className="text-[11px] text-gray-400">
-            Node / Express / Neon · Next.js / Tailwind
+            Built for sneakerheads. Powered by Node & Next.js.
           </p>
         </div>
       </footer>

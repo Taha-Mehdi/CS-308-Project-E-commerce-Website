@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Online Store",
-  description: "CS308 Ecommerce Project",
+  title: "SNEAKS-UP",
+  description: "hype Sneakers",
 };
 
 export default function RootLayout({ children }) {
