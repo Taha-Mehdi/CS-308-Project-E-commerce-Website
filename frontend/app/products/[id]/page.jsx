@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import StockBadge from "../../../components/StockBadge";
+import {
+  addReview,
+  getReviewsByProduct,
+} from "../../../lib/reviews";
 import { useAuth } from "../../../context/AuthContext";
 
 export default function ProductDetailPage() {
@@ -21,6 +25,10 @@ export default function ProductDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
+  const [reviews, setReviews] = useState([]);
+  const [rating, setRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [confirmDelivery, setConfirmDelivery] = useState(false);
 
   // Load single product
   useEffect(() => {
@@ -77,6 +85,13 @@ export default function ProductDetailPage() {
 
     loadProduct();
   }, [apiBase, productId]);
+
+  // Load local reviews for this product
+  useEffect(() => {
+    if (!productId) return;
+    const next = getReviewsByProduct(productId);
+    setReviews(next);
+  }, [productId]);
 
   function handleQuantityChange(e) {
     const value = Number(e.target.value);
@@ -173,6 +188,37 @@ export default function ProductDetailPage() {
     }
   }
 
+  function handleSubmitReview(e) {
+    e.preventDefault();
+    if (!user) {
+      setMessage("Please log in to leave a review.");
+      setMessageType("error");
+      return;
+    }
+    if (!confirmDelivery) {
+      setMessage("Please confirm you received the product before reviewing.");
+      setMessageType("error");
+      return;
+    }
+    if (!rating || !reviewText.trim()) {
+      setMessage("Please add a rating and a comment.");
+      setMessageType("error");
+      return;
+    }
+    const created = addReview({
+      productId,
+      rating,
+      comment: reviewText.trim(),
+      userEmail: user.email,
+      productName: product?.name || "",
+    });
+    setReviews((prev) => [...prev, created]);
+    setReviewText("");
+    setConfirmDelivery(false);
+    setMessage("Review submitted for approval.");
+    setMessageType("success");
+  }
+
   const price = product ? Number(product.price || 0) : 0;
   const imageUrl =
     product && product.imageUrl ? `${apiBase}${product.imageUrl}` : null;
@@ -259,6 +305,27 @@ export default function ProductDetailPage() {
                 </p>
               )}
 
+              {/* Product metadata (mock/display only) */}
+              <div className="grid sm:grid-cols-2 gap-3 text-xs text-gray-600">
+                <div className="rounded-2xl border border-gray-200 bg-white/60 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">
+                    Model / Serial
+                  </p>
+                  <p className="font-semibold text-gray-900">
+                    {product.model || "Not set"} · {product.serialNumber || "N/A"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white/60 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">
+                    Warranty / Distributor
+                  </p>
+                  <p className="font-semibold text-gray-900">
+                    {product.warrantyStatus || "Standard warranty"} ·{" "}
+                    {product.distributor || "Unknown distributor"}
+                  </p>
+                </div>
+              </div>
+
               {/* Add to bag controls */}
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
@@ -303,6 +370,112 @@ export default function ProductDetailPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Reviews */}
+        {product && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                  Reviews & Ratings
+                </p>
+                <p className="text-sm text-gray-600">
+                  Approved reviews are shown below. New reviews need manager approval.
+                </p>
+              </div>
+              <span className="text-[11px] text-gray-500">
+                {reviews.filter((r) => r.status === "approved").length} approved ·{" "}
+                {reviews.filter((r) => r.status === "pending").length} pending
+              </span>
+            </div>
+
+            {reviews.filter((r) => r.status === "approved").length === 0 ? (
+              <p className="text-sm text-gray-500">No reviews yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {reviews
+                  .filter((r) => r.status === "approved")
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .map((rev) => (
+                    <div
+                      key={rev.id}
+                      className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-900">
+                          {rev.userEmail || "Customer"}
+                        </p>
+                        <span className="text-[11px] text-amber-600 font-semibold">
+                          {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-700 mt-1">{rev.comment}</p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {rev.createdAt
+                          ? new Date(rev.createdAt).toLocaleString()
+                          : ""}
+                      </p>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            <form
+              onSubmit={handleSubmitReview}
+              className="rounded-3xl border border-gray-200 bg-white/80 p-4 space-y-3"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                Leave a review
+              </p>
+              {!user && (
+                <p className="text-sm text-red-600">
+                  Please log in before rating this product.
+                </p>
+              )}
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-gray-700 font-medium">
+                  Rating
+                </label>
+                <select
+                  value={rating}
+                  onChange={(e) => setRating(Number(e.target.value))}
+                  className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-black/20"
+                  disabled={!user}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n} star{n === 1 ? "" : "s"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                rows={3}
+                placeholder="Share your experience…"
+                className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                disabled={!user}
+              />
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={confirmDelivery}
+                  onChange={(e) => setConfirmDelivery(e.target.checked)}
+                  disabled={!user}
+                />
+                I confirm I received this product (required to review)
+              </label>
+              <button
+                type="submit"
+                disabled={!user}
+                className="w-full rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.16em] py-2.5 hover:bg-gray-900 disabled:opacity-50"
+              >
+                Submit review
+              </button>
+            </form>
           </div>
         )}
       </div>

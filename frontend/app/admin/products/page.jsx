@@ -5,6 +5,7 @@ import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import ActionButton from "../../../components/ActionButton";
 import StockBadge from "../../../components/StockBadge";
+import { getAllReviews, updateReviewStatus } from "../../../lib/reviews";
 import { useAuth } from "../../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -37,6 +38,9 @@ export default function AdminProductsPage() {
 
   // Delete product
   const [deletingId, setDeletingId] = useState(null);
+
+  // Reviews (local demo)
+  const [pendingReviews, setPendingReviews] = useState([]);
 
   function ensureAdmin() {
     if (!user || user.roleId !== 1) {
@@ -98,6 +102,13 @@ export default function AdminProductsPage() {
       setLoading(false);
     }
   }, [apiBase, loadingUser, user]);
+
+  // Load pending reviews from local storage (demo)
+  useEffect(() => {
+    const all = getAllReviews();
+    const pending = all.filter((r) => r.status === "pending");
+    setPendingReviews(pending);
+  }, []);
 
   // ---------- CREATE PRODUCT (with optional image) ----------
 
@@ -243,6 +254,20 @@ export default function AdminProductsPage() {
       return data;
     } finally {
       setImageUploadingId(null);
+    }
+  }
+
+  function handleReviewAction(id, nextStatus) {
+    const updated = updateReviewStatus(id, nextStatus);
+    if (updated) {
+      setPendingReviews((prev) =>
+        prev.filter((r) => r.id !== id && r.status === "pending")
+      );
+      setMessage(
+        nextStatus === "approved"
+          ? "Review approved."
+          : "Review rejected."
+      );
     }
   }
 
@@ -478,6 +503,67 @@ export default function AdminProductsPage() {
           >
             Back to admin dashboard
           </Link>
+        </div>
+
+        {/* Pending reviews (demo approval) */}
+        <div className="rounded-3xl border border-gray-200 bg-white/90 shadow-sm px-4 py-4 sm:px-5 sm:py-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                Pending reviews
+              </p>
+              <p className="text-xs text-gray-500">
+                Approve comments before they appear on product pages.
+              </p>
+            </div>
+            <span className="text-[11px] text-gray-500">
+              {pendingReviews.length} waiting
+            </span>
+          </div>
+
+          {pendingReviews.length === 0 ? (
+            <p className="text-sm text-gray-500">No pending reviews.</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingReviews.map((rev) => (
+                <div
+                  key={rev.id}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {rev.userEmail || "Customer"}
+                      </p>
+                      <p className="text-[11px] text-gray-500">
+                        {rev.productName || `Product #${rev.productId}`}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-amber-600 font-semibold">
+                      {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-700 mt-1">{rev.comment}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <ActionButton
+                      size="xs"
+                      variant="success"
+                      onClick={() => handleReviewAction(rev.id, "approved")}
+                    >
+                      Approve
+                    </ActionButton>
+                    <ActionButton
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleReviewAction(rev.id, "rejected")}
+                    >
+                      Reject
+                    </ActionButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Message */}
