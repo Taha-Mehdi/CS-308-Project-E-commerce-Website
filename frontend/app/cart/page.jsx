@@ -438,7 +438,7 @@ export default function CartPage() {
               Sneaks-up
             </p>
             <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              Your bag
+              Your Cart
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               Login to see your saved pairs and check out.
@@ -505,7 +505,7 @@ export default function CartPage() {
               Sneaks-up
             </p>
             <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              Your bag
+              Your Cart
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               Review your picks before locking in the drop.
