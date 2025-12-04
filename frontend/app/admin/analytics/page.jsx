@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import { useAuth } from "../../../context/AuthContext";
+import { calculateAnalytics } from "../../../lib/analytics";
 
 // Recharts
 import {
@@ -97,59 +98,7 @@ export default function AdminAnalyticsPage() {
   }, [apiBase, loadingUser, user]);
 
   // ---------------- DATA PROCESSING ----------------
-  const analytics = useMemo(() => {
-    if (orders.length === 0)
-      return {
-        totalRevenue: 0,
-        orderCount: 0,
-        avgOrderValue: 0,
-        statusCounts: {},
-        revenueByDay: [],
-      };
-
-    let totalRevenue = 0;
-    const orderCount = orders.length;
-    const statusCounts = {};
-    const revenueMap = new Map();
-
-    for (const o of orders) {
-      const totalNum = Number(o.total || 0);
-      const status = o.status || "pending";
-
-      // Count statuses
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-
-      // Only count non-cancelled revenue
-      if (status !== "cancelled") {
-        totalRevenue += totalNum;
-
-        if (o.createdAt) {
-          const d = new Date(o.createdAt);
-          if (!Number.isNaN(d.getTime())) {
-            const key = d.toISOString().slice(0, 10);
-            revenueMap.set(key, (revenueMap.get(key) || 0) + totalNum);
-          }
-        }
-      }
-    }
-
-    const avgOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
-
-    const revenueByDay = [...revenueMap.entries()]
-      .map(([date, revenue]) => ({
-        date,
-        revenue: Number(revenue.toFixed(2)),
-      }))
-      .sort((a, b) => (a.date < b.date ? -1 : 1));
-
-    return {
-      totalRevenue,
-      orderCount,
-      avgOrderValue,
-      statusCounts,
-      revenueByDay,
-    };
-  }, [orders]);
+  const analytics = useMemo(() => calculateAnalytics(orders), [orders]);
 
   const statusChartData = useMemo(() => {
     const statuses = ["pending", "paid", "shipped", "delivered", "cancelled"];
@@ -247,6 +196,54 @@ export default function AdminAnalyticsPage() {
               ${analytics.avgOrderValue.toFixed(2)}
             </p>
             <p className="text-xs text-gray-500">Based on all orders</p>
+          </div>
+        </div>
+
+        {/* SECONDARY METRICS */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-2xl p-4 bg-white border border-gray-200 shadow-sm">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+              Recent 7d Revenue
+            </p>
+            <p className="text-2xl font-semibold text-gray-900">
+              ${analytics.recentRevenue.toFixed(2)}
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Sum of the last 7 days
+            </p>
+          </div>
+          <div className="rounded-2xl p-4 bg-white border border-gray-200 shadow-sm">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+              Completion rate
+            </p>
+            <p className="text-2xl font-semibold text-emerald-700">
+              {analytics.completionRate.toFixed(0)}%
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Paid/Shipped/Delivered share
+            </p>
+          </div>
+          <div className="rounded-2xl p-4 bg-white border border-gray-200 shadow-sm">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+              Avg revenue / day
+            </p>
+            <p className="text-2xl font-semibold text-gray-900">
+              ${analytics.avgPerDay.toFixed(2)}
+            </p>
+            <p className="text-[11px] text-gray-500">Across revenue days</p>
+          </div>
+          <div className="rounded-2xl p-4 bg-white border border-gray-200 shadow-sm">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+              Top day
+            </p>
+            <p className="text-lg font-semibold text-gray-900">
+              {analytics.topDay?.date || "–"}
+            </p>
+            <p className="text-[11px] text-gray-500">
+              {analytics.topDay
+                ? `$${analytics.topDay.revenue.toFixed(2)}`
+                : "No revenue yet"}
+            </p>
           </div>
         </div>
 
