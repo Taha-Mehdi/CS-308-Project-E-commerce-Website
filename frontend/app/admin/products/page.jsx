@@ -596,7 +596,9 @@ export default function AdminProductsPage() {
             <ActionButton
               type="submit"
               disabled={creating}
-              className="gap-2 px-5"
+              size="xs"
+              variant="info"
+              className="gap-2 px-4 shadow-sm"
             >
               {creating ? "Creating…" : "Create drop"}
             </ActionButton>
