@@ -528,7 +528,7 @@ export default function CartPage() {
         {enrichedItems.length === 0 ? (
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
-              Your bag is empty. When you add pairs, they’ll show up here.
+              Your cart is empty. When you add pairs, they’ll show up here.
             </p>
             <Link
               href="/products"
