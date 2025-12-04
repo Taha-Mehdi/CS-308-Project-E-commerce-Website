@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
+import ActionButton from "../../../components/ActionButton";
 import { useAuth } from "../../../context/AuthContext";
 
 const STATUS_OPTIONS = ["pending", "paid", "shipped", "delivered", "cancelled"];
@@ -21,6 +22,18 @@ function statusBadgeClasses(status) {
     default:
       return "bg-amber-50 text-amber-700 border border-amber-200";
   }
+}
+
+const STATUS_VARIANTS = {
+  pending: "muted",
+  paid: "success",
+  shipped: "info",
+  delivered: "accent",
+  cancelled: "danger",
+};
+
+export function statusActionVariant(status) {
+  return STATUS_VARIANTS[status] || "muted";
 }
 
 export default function AdminOrdersPage() {
@@ -579,42 +592,46 @@ export default function AdminOrdersPage() {
                           ${Number(order.total || 0).toFixed(2)}
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
-                          {/* Status change */}
-                          <select
-                            value={order.status}
-                            onChange={(e) =>
-                              handleChangeStatus(order.id, e.target.value)
-                            }
-                            disabled={statusUpdatingId === order.id}
-                            className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/30"
-                          >
-                            {STATUS_OPTIONS.map((status) => (
-                              <option key={status} value={status}>
+                          {STATUS_OPTIONS.map((status) => {
+                            const active = order.status === status;
+                            return (
+                              <ActionButton
+                                key={status}
+                                type="button"
+                                size="xs"
+                                variant={statusActionVariant(status)}
+                                disabled={statusUpdatingId === order.id}
+                                className={
+                                  active
+                                    ? "ring-2 ring-offset-1 ring-black/60"
+                                    : "opacity-90"
+                                }
+                                onClick={() =>
+                                  handleChangeStatus(order.id, status)
+                                }
+                              >
                                 {status}
-                              </option>
-                            ))}
-                          </select>
+                              </ActionButton>
+                            );
+                          })}
 
-                          {/* Download invoice */}
-                          <button
+                          <ActionButton
                             type="button"
                             onClick={() => handleDownloadInvoice(order.id)}
                             disabled={invoiceLoadingId === order.id}
-                            className="rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] px-3.5 py-1.75 hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                           >
                             {invoiceLoadingId === order.id
                               ? "Preparing…"
                               : "Invoice"}
-                          </button>
+                          </ActionButton>
 
-                          {/* Expand details */}
-                          <button
+                          <ActionButton
                             type="button"
+                            variant="outline"
                             onClick={() => handleToggleExpand(order.id)}
-                            className="rounded-full border border-gray-300 bg-white px-3 py-1.75 text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
                           >
                             {isExpanded ? "Hide items" : "View items"}
-                          </button>
+                          </ActionButton>
                         </div>
                       </div>
                     </div>

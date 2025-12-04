@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "../../components/SiteLayout";
+import ActionButton from "../../components/ActionButton";
 import { useAuth } from "../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -363,16 +364,15 @@ export default function OrdersPage() {
                       <p className="text-sm font-semibold text-gray-900">
                         Total: ${Number(order.total || 0).toFixed(2)}
                       </p>
-                      <button
+                      <ActionButton
                         type="button"
                         onClick={() => handleDownloadInvoice(order.id)}
                         disabled={invoiceLoadingId === order.id}
-                        className="rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] px-3.5 py-1.75 hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                       >
                         {invoiceLoadingId === order.id
                           ? "Preparing…"
                           : "Download invoice"}
-                      </button>
+                      </ActionButton>
                     </div>
                   </div>
 
