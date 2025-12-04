@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "../../components/SiteLayout";
+import ProductCard from "../../components/ProductCard";
+import StockBadge from "../../components/StockBadge";
 import { useAuth } from "../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -319,12 +321,9 @@ export default function ProductsPage() {
                         {product.description}
                       </p>
                     )}
-                    <p className="text-[11px] text-gray-500">
-                      Stock:{" "}
-                      <span className="font-medium text-gray-900">
-                        {product.stock}
-                      </span>
-                    </p>
+                    <div className="pt-1">
+                      <StockBadge stock={product.stock} tone="muted" />
+                    </div>
                   </div>
 
                   {/* Add to bag */}

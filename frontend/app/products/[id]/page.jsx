@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
+import StockBadge from "../../../components/StockBadge";
 import { useAuth } from "../../../context/AuthContext";
 
 export default function ProductDetailPage() {
@@ -249,13 +250,7 @@ export default function ProductDetailPage() {
                 <p className="text-lg sm:text-xl font-semibold text-gray-900">
                   ${price.toFixed(2)}
                 </p>
-                <p className="text-xs text-gray-500">
-                  {typeof product.stock === "number"
-                    ? product.stock > 0
-                      ? `${product.stock} in stock`
-                      : "Out of stock"
-                    : "Limited availability"}
-                </p>
+                <StockBadge stock={product.stock} tone="muted" />
               </div>
 
               {product.description && (

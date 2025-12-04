@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
+import ActionButton from "../../../components/ActionButton";
+import StockBadge from "../../../components/StockBadge";
 import { useAuth } from "../../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -591,13 +593,13 @@ export default function AdminProductsPage() {
           </div>
 
           <div className="flex items-center justify-end gap-3">
-            <button
+            <ActionButton
               type="submit"
               disabled={creating}
-              className="px-4 py-2.5 rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              className="gap-2 px-5"
             >
               {creating ? "Creating…" : "Create drop"}
-            </button>
+            </ActionButton>
           </div>
         </form>
 
@@ -716,22 +718,29 @@ export default function AdminProductsPage() {
                               ID: {p.id}
                             </p>
                           </div>
-                          <div className="text-right space-y-1">
-                            <div>
-                              <span className="text-xs font-semibold text-gray-900">
-                                $
-                                {isEditing
-                                  ? Number(editPrice || 0).toFixed(2)
-                                  : priceNumber.toFixed(2)}
-                              </span>
+                            <div className="text-right space-y-1">
+                              <div>
+                                <span className="text-xs font-semibold text-gray-900">
+                                  $
+                                  {isEditing
+                                    ? Number(editPrice || 0).toFixed(2)
+                                    : priceNumber.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="flex justify-end">
+                                {isEditing ? (
+                                  <span className="text-[11px] text-gray-700 font-medium">
+                                    In stock: {editStock}
+                                  </span>
+                                ) : (
+                                  <StockBadge
+                                    stock={p.stock}
+                                    tone="muted"
+                                    className="text-[10px] px-2.5 py-1"
+                                  />
+                                )}
+                              </div>
                             </div>
-                            <div className="text-[11px] text-gray-500">
-                              Stock:{" "}
-                              <span className="font-medium text-gray-900">
-                                {isEditing ? editStock : p.stock}
-                              </span>
-                            </div>
-                          </div>
                         </div>
 
                         {/* Description + editable price/stock fields when editing */}

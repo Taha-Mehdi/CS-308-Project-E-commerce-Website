@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import StockBadge from "./StockBadge";
 
 export default function ProductCard({ product }) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -44,10 +45,9 @@ export default function ProductCard({ product }) {
           </p>
         )}
 
-        <p className="text-[10px] sm:text-[11px] text-gray-500 mt-1">
-          Stock:{" "}
-          <span className="font-medium text-gray-800">{product.stock}</span>
-        </p>
+        <div className="mt-1">
+          <StockBadge stock={product.stock} tone="muted" />
+        </div>
       </div>
     </Link>
   );
