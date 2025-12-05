@@ -5,14 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import StockBadge from "../../../components/StockBadge";
-import {
-  addReview,
-  getReviewsByProduct,
-} from "../../../lib/reviews";
+import { addReview, getReviewsByProduct } from "../../../lib/reviews";
 import { useAuth } from "../../../context/AuthContext";
+import { addToCartApi } from "../../../lib/api";
 
 export default function ProductDetailPage() {
-  const { user } = useAuth(); // only need user; token comes from localStorage
+  const { user, logout } = useAuth(); // now also using logout
   const params = useParams();
   const router = useRouter();
   const productId = params?.id;
@@ -105,13 +103,7 @@ export default function ProductDetailPage() {
     setMessage("");
     setMessageType("info");
 
-    // get token exactly like other pages
-    let authToken = null;
-    if (typeof window !== "undefined") {
-      authToken = localStorage.getItem("token") || null;
-    }
-
-    if (!user || !authToken) {
+    if (!user) {
       setMessage("Please log in to add items to your bag.");
       setMessageType("error");
       return;
@@ -121,56 +113,10 @@ export default function ProductDetailPage() {
 
     setSubmitting(true);
     try {
-      const body = {
+      await addToCartApi({
         productId: Number(product.id),
         quantity: Number(quantity),
-      };
-
-      // IMPORTANT: backend is POST /cart/add
-      const res = await fetch(`${apiBase}/cart/add`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(body),
       });
-
-      const contentType = res.headers.get("content-type") || "";
-      let data = null;
-      let rawText = "";
-
-      if (contentType.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      } else {
-        try {
-          rawText = await res.text();
-        } catch {
-          rawText = "";
-        }
-      }
-
-      if (!res.ok) {
-        console.error("Add to cart failed:", {
-          status: res.status,
-          data,
-          rawText,
-        });
-
-        const backendMessage =
-          (data && data.message) || (rawText ? rawText : null);
-
-        setMessage(
-          backendMessage ||
-            `Could not add this pair to your bag (status ${res.status}).`
-        );
-        setMessageType("error");
-        return;
-      }
 
       // update navbar cart badge
       if (typeof window !== "undefined") {
@@ -181,8 +127,25 @@ export default function ProductDetailPage() {
       setMessageType("success");
     } catch (err) {
       console.error("Add to cart error:", err);
-      setMessage("Something went wrong. Please try again.");
-      setMessageType("error");
+
+      // apiRequest throws an Error with .status and .message
+      if (err.status === 401) {
+        // Session is no longer valid (token invalid or refresh failed)
+        setMessage("Your session has expired. Please log in again.");
+        setMessageType("error");
+
+        // Clear AuthContext + localStorage tokens
+        logout();
+
+        // Optionally redirect to login page
+        router.push("/login");
+      } else {
+        setMessage(
+          err.message ||
+            "Could not add this pair to your bag. Please try again."
+        );
+        setMessageType("error");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -312,7 +275,8 @@ export default function ProductDetailPage() {
                     Model / Serial
                   </p>
                   <p className="font-semibold text-gray-900">
-                    {product.model || "Not set"} · {product.serialNumber || "N/A"}
+                    {product.model || "Not set"} ·{" "}
+                    {product.serialNumber || "N/A"}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-gray-200 bg-white/60 px-3 py-3">
@@ -382,12 +346,19 @@ export default function ProductDetailPage() {
                   Reviews & Ratings
                 </p>
                 <p className="text-sm text-gray-600">
-                  Approved reviews are shown below. New reviews need manager approval.
+                  Approved reviews are shown below. New reviews need manager
+                  approval.
                 </p>
               </div>
               <span className="text-[11px] text-gray-500">
-                {reviews.filter((r) => r.status === "approved").length} approved ·{" "}
-                {reviews.filter((r) => r.status === "pending").length} pending
+                {
+                  reviews.filter((r) => r.status === "approved").length
+                }{" "}
+                approved ·{" "}
+                {
+                  reviews.filter((r) => r.status === "pending").length
+                }{" "}
+                pending
               </span>
             </div>
 
@@ -397,7 +368,10 @@ export default function ProductDetailPage() {
               <div className="space-y-2">
                 {reviews
                   .filter((r) => r.status === "approved")
-                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .sort(
+                    (a, b) =>
+                      new Date(b.createdAt) - new Date(a.createdAt)
+                  )
                   .map((rev) => (
                     <div
                       key={rev.id}
@@ -408,13 +382,21 @@ export default function ProductDetailPage() {
                           {rev.userEmail || "Customer"}
                         </p>
                         <span className="text-[11px] text-amber-600 font-semibold">
-                          {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
+                          {"★"
+                            .repeat(
+                              Math.max(1, Math.min(5, rev.rating || 1))
+                            )
+                            .padEnd(5, "☆")}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-700 mt-1">{rev.comment}</p>
+                      <p className="text-xs text-gray-700 mt-1">
+                        {rev.comment}
+                      </p>
                       <p className="text-[10px] text-gray-400 mt-1">
                         {rev.createdAt
-                          ? new Date(rev.createdAt).toLocaleString()
+                          ? new Date(
+                              rev.createdAt
+                            ).toLocaleString()
                           : ""}
                       </p>
                     </div>
@@ -463,7 +445,9 @@ export default function ProductDetailPage() {
                 <input
                   type="checkbox"
                   checked={confirmDelivery}
-                  onChange={(e) => setConfirmDelivery(e.target.checked)}
+                  onChange={(e) =>
+                    setConfirmDelivery(e.target.checked)
+                  }
                   disabled={!user}
                 />
                 I confirm I received this product (required to review)

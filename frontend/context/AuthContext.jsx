@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { clearStoredTokens } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -12,14 +13,13 @@ export function AuthProvider({ children }) {
   // Load from localStorage on mount
   useEffect(() => {
     try {
-      const storedToken =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
-      const storedUser =
-        typeof window !== "undefined"
-          ? localStorage.getItem("user")
-          : null;
+      if (typeof window === "undefined") {
+        setLoadingUser(false);
+        return;
+      }
+
+      const storedToken = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
 
       if (storedToken && storedUser) {
         try {
@@ -37,15 +37,15 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // MAIN login() — this is where the “Invalid data” was coming from before
+  // MAIN login()
+  // Call this after a successful login/register API call
+  // e.g. const data = await loginApi(...); login(data.token, data.user);
   function login(newToken, newUser) {
-    // Be lenient: just check we have *something* sensible
     if (!newToken || !newUser || typeof newUser !== "object") {
       console.warn("AuthContext.login received invalid data:", {
         newToken,
         newUser,
       });
-      // Don’t throw anymore – just ignore and stay logged out
       return;
     }
 
@@ -54,6 +54,7 @@ export function AuthProvider({ children }) {
       setUser(newUser);
 
       if (typeof window !== "undefined") {
+        // token is also stored by api.js, but we keep this for compatibility
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
       }
@@ -66,10 +67,14 @@ export function AuthProvider({ children }) {
     try {
       setToken(null);
       setUser(null);
+
       if (typeof window !== "undefined") {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
       }
+
+      // Also clear access + refresh token via api.js helper
+      clearStoredTokens();
     } catch (err) {
       console.error("AuthContext.logout error:", err);
     }

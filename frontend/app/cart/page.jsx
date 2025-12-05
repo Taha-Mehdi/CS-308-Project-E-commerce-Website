@@ -2,13 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
+import {
+  getCartApi,
+  getProductsApi,
+  updateCartItemApi,
+  removeFromCartApi,
+  createOrderApi,
+} from "../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function CartPage() {
-  const { user, loadingUser } = useAuth();
+  const { user, loadingUser, logout } = useAuth();
+  const router = useRouter();
 
   const [cartItems, setCartItems] = useState([]);
   const [products, setProducts] = useState([]);
@@ -26,76 +35,26 @@ export default function CartPage() {
       setMessage("");
 
       try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("token")
-            : null;
+        // Protected cart API (auth required, auto-refresh)
+        const cartData = await getCartApi();
+        setCartItems(Array.isArray(cartData) ? cartData : []);
 
-        if (!token) {
-          setCartItems([]);
-          setProducts([]);
-          setLoading(false);
-          return;
-        }
-
-        // 1) Cart items
-        const cartRes = await fetch(`${apiBase}/cart`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!cartRes.ok) {
-          let msg = "Failed to load your bag.";
-          const ct = cartRes.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            try {
-              const errJson = await cartRes.json();
-              if (errJson && errJson.message) msg = errJson.message;
-            } catch {
-              // ignore
-            }
-          }
-          setMessage(msg);
-          setCartItems([]);
-        } else {
-          const ct = cartRes.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            try {
-              const ci = await cartRes.json();
-              setCartItems(Array.isArray(ci) ? ci : []);
-            } catch {
-              setCartItems([]);
-              setMessage("Could not decode cart items.");
-            }
-          } else {
-            setCartItems([]);
-            setMessage("Unexpected response when loading bag.");
-          }
-        }
-
-        // 2) Products (for names, prices, images)
-        const prodRes = await fetch(`${apiBase}/products`);
-        if (prodRes.ok) {
-          const ct = prodRes.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            try {
-              const data = await prodRes.json();
-              setProducts(Array.isArray(data) ? data : []);
-            } catch {
-              setProducts([]);
-            }
-          } else {
-            setProducts([]);
-          }
-        } else {
-          setProducts([]);
-        }
+        // Public products API
+        const productsData = await getProductsApi();
+        setProducts(Array.isArray(productsData) ? productsData : []);
       } catch (err) {
         console.error("Cart page load error:", err);
+
+        if (err.status === 401) {
+          setMessage("Your session has expired. Please log in again.");
+          logout();
+          router.push("/login");
+        } else {
+          setMessage(err.message || "Failed to load bag.");
+        }
+
         setCartItems([]);
         setProducts([]);
-        setMessage("Failed to load bag.");
       } finally {
         setLoading(false);
       }
@@ -106,7 +65,7 @@ export default function CartPage() {
     } else if (!loadingUser) {
       setLoading(false);
     }
-  }, [apiBase, loadingUser, user]);
+  }, [loadingUser, user, logout, router]);
 
   const productsMap = useMemo(() => {
     const m = new Map();
@@ -135,144 +94,74 @@ export default function CartPage() {
     }
 
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
+      setMessage("");
 
-      if (!token) {
-        setMessage("Please login again to update your bag.");
-        return;
-      }
-
-      const res = await fetch(`${apiBase}/cart/update`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          productId,
-          quantity: newQty,
-        }),
-      });
-
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      }
-
-      if (!res.ok) {
-        console.error("Update cart failed:", data || {});
-        const msg =
-          (data && data.message) || "Could not update this item.";
-        setMessage(msg);
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
-        return;
-      }
+      await updateCartItemApi(productId, newQty);
 
       // Update local state
       setCartItems((prev) =>
         prev.map((ci) =>
-          ci.productId === productId
-            ? { ...ci, quantity: newQty }
-            : ci
+          ci.productId === productId ? { ...ci, quantity: newQty } : ci
         )
       );
+
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("cart-updated"));
       }
     } catch (err) {
       console.error("Update cart error:", err);
-      const msg = "Could not update this item.";
-      setMessage(msg);
-      if (typeof window !== "undefined") {
-        window.alert(msg);
+
+      if (err.status === 401) {
+        const msg = "Your session has expired. Please log in again.";
+        setMessage(msg);
+        logout();
+        router.push("/login");
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
+      } else {
+        const msg = err.message || "Could not update this item.";
+        setMessage(msg);
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
       }
     }
   }
 
   async function handleRemove(productId) {
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
+      setMessage("");
 
-      if (!token) {
-        setMessage("Please login again to update your bag.");
-        return;
-      }
+      await removeFromCartApi(productId);
 
-      const res = await fetch(
-        `${apiBase}/cart/remove/${productId}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      }
-
-      if (!res.ok) {
-        console.error("Remove cart item failed:", data || {});
-        const msg =
-          (data && data.message) || "Could not remove this item.";
-        setMessage(msg);
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
-        return;
-      }
-
-      setCartItems((prev) =>
-        prev.filter((ci) => ci.productId !== productId)
-      );
+      setCartItems((prev) => prev.filter((ci) => ci.productId !== productId));
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("cart-updated"));
       }
     } catch (err) {
       console.error("Remove cart item error:", err);
-      const msg = "Could not remove this item.";
-      setMessage(msg);
-      if (typeof window !== "undefined") {
-        window.alert(msg);
+
+      if (err.status === 401) {
+        const msg = "Your session has expired. Please log in again.";
+        setMessage(msg);
+        logout();
+        router.push("/login");
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
+      } else {
+        const msg = err.message || "Could not remove this item.";
+        setMessage(msg);
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
       }
     }
   }
 
   async function handleCheckout() {
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
-
-      if (!token) {
-        setMessage("Please login again to place an order.");
-        if (typeof window !== "undefined") {
-          window.alert("Please login again to place an order.");
-        }
-        return;
-      }
-
       if (enrichedItems.length === 0) {
         setMessage("Your bag is empty.");
         return;
@@ -286,36 +175,7 @@ export default function CartPage() {
         quantity: ci.quantity,
       }));
 
-      const res = await fetch(`${apiBase}/orders`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ items: itemsPayload }),
-      });
-
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      }
-
-      if (!res.ok) {
-        console.error("Place order failed:", data || {});
-        const msg =
-          (data && data.message) ||
-          "Could not place this order. Please try again.";
-        setMessage(msg);
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
-        return;
-      }
+      const data = await createOrderApi(itemsPayload);
 
       const orderId = data?.orderId || null;
       const total = data?.total || null;
@@ -330,10 +190,21 @@ export default function CartPage() {
       setMessage("Order placed successfully.");
     } catch (err) {
       console.error("Place order error:", err);
-      const msg = "Could not place this order. Please try again.";
-      setMessage(msg);
-      if (typeof window !== "undefined") {
-        window.alert(msg);
+
+      if (err.status === 401) {
+        const msg = "Your session has expired. Please log in again.";
+        setMessage(msg);
+        logout();
+        router.push("/login");
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
+      } else {
+        const msg = err.message || "Could not place this order. Please try again.";
+        setMessage(msg);
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
       }
     } finally {
       setPlacingOrder(false);
@@ -344,15 +215,16 @@ export default function CartPage() {
     if (!lastOrderId) return;
 
     try {
+      // For now we still use a direct fetch here (PDF download),
+      // using the raw token from localStorage.
       const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
       if (!token) {
-        setMessage("Please login again to download invoices.");
+        const msg = "Please login again to download invoices.";
+        setMessage(msg);
         if (typeof window !== "undefined") {
-          window.alert("Please login again to download invoices.");
+          window.alert(msg);
         }
         return;
       }
@@ -360,14 +232,11 @@ export default function CartPage() {
       setInvoiceLoadingId(lastOrderId);
       setMessage("");
 
-      const res = await fetch(
-        `${apiBase}/invoice/${lastOrderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await fetch(`${apiBase}/invoice/${lastOrderId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const ct = res.headers.get("content-type") || "";
 
@@ -381,6 +250,13 @@ export default function CartPage() {
             // ignore
           }
         }
+
+        if (res.status === 401) {
+          msg = "Your session has expired. Please log in again.";
+          logout();
+          router.push("/login");
+        }
+
         console.error("Invoice download failed:", res.status);
         setMessage(msg);
         if (typeof window !== "undefined") {
@@ -545,9 +421,7 @@ export default function CartPage() {
                 const p = ci.product;
                 const price = p ? Number(p.price || 0) : 0;
                 const lineTotal = price * (ci.quantity || 0);
-                const imageUrl = p?.imageUrl
-                  ? `${apiBase}${p.imageUrl}`
-                  : null;
+                const imageUrl = p?.imageUrl ? `${apiBase}${p.imageUrl}` : null;
 
                 return (
                   <div
@@ -656,9 +530,7 @@ export default function CartPage() {
             {/* Summary & checkout */}
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
-                <p className="text-xs text-gray-500">
-                  Estimated total
-                </p>
+                <p className="text-xs text-gray-500">Estimated total</p>
                 <p className="text-lg font-semibold text-gray-900">
                   ${cartTotal.toFixed(2)}
                 </p>
