@@ -13,12 +13,24 @@ function authMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    // payload: { id, email, roleId }
+    // payload: { id, email, roleId, type: 'access' }
     req.user = payload;
     next();
   } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      // less noisy log
+      console.warn(
+        'JWT expired for request:',
+        req.method,
+        req.originalUrl,
+        'expiredAt:',
+        err.expiredAt
+      );
+      return res.status(401).json({ message: 'Token expired' });
+    }
+
     console.error('JWT verification failed:', err);
-    return res.status(401).json({ message: 'Invalid or expired token' });
+    return res.status(401).json({ message: 'Invalid token' });
   }
 }
 
