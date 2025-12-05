@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
-const invoiceRoutes = require('./routes/invoice');
+const { router: invoiceRoutes } = require('./routes/invoice');
 const path = require("path");
 
 const app = express();
