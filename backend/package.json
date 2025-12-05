@@ -6,7 +6,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "db:generate": "drizzle-kit generate --config=drizzle.config.cjs",
-    "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs"
+    "db:migrate": "drizzle-kit up:pg"
   },
   "keywords": [],
   "author": "",
@@ -22,14 +22,14 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^7.0.11",
     "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "socket.io": "^4.8.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.7",
+    "drizzle-kit": "^0.31.8",
     "nodemon": "^3.1.11"
   }
 }
