@@ -113,4 +113,8 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = {
+  router,
+  buildInvoicePdf,
+};
+
