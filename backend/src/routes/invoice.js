@@ -8,6 +8,57 @@ const path = require('path');
 
 const router = express.Router();
 
+function buildInvoicePdf(order, userInfo, items) {
+  const doc = new PDFDocument();
+  const chunks = [];
+
+  doc.on('data', (chunk) => chunks.push(chunk));
+  doc.on('error', (err) => {
+    console.error('PDF error:', err);
+  });
+
+  // title
+  doc.fontSize(22).text('INVOICE', { align: 'center' });
+  doc.moveDown();
+
+  // order info
+  doc.fontSize(12);
+  doc.text(`Order ID: ${order.id}`);
+  doc.text(`Status: ${order.status}`);
+  doc.text(`Date: ${order.createdAt}`);
+  doc.moveDown();
+
+  // user info
+  doc.text(`Customer: ${userInfo.fullName}`);
+  doc.text(`Email: ${userInfo.email}`);
+  doc.moveDown();
+
+  // items
+  doc.fontSize(14).text('Items:', { underline: true });
+  doc.moveDown(0.5);
+
+  for (const item of items) {
+    doc.fontSize(12).text(`Product #${item.productId}`);
+    doc.text(`Quantity: ${item.quantity}`);
+    doc.text(`Unit Price: $${item.unitPrice}`);
+    const subtotal = Number(item.unitPrice) * item.quantity;
+    doc.text(`Subtotal: $${subtotal.toFixed(2)}`);
+    doc.moveDown();
+  }
+
+  // total
+  doc.fontSize(14).text(`Total: $${order.total}`, { align: 'right' });
+
+  doc.end();
+
+  return new Promise((resolve) => {
+    doc.on('end', () => {
+      const pdfBuffer = Buffer.concat(chunks);
+      resolve(pdfBuffer);
+    });
+  });
+}
+
 // GET /invoice/:orderId (admin only OR owner of order)
 router.get('/:orderId', authMiddleware, async (req, res) => {
   try {
@@ -17,9 +68,9 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
 
     // Load order
     const foundOrders = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId));
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId));
 
     if (foundOrders.length === 0) {
       return res.status(404).json({ message: 'Order not found' });
@@ -34,62 +85,28 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
 
     // Load user
     const userInfoArr = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, order.userId));
+        .select()
+        .from(users)
+        .where(eq(users.id, order.userId));
 
     const userInfo = userInfoArr[0];
 
     // Load order items
     const items = await db
-      .select()
-      .from(orderItems)
-      .where(eq(orderItems.orderId, orderId));
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId));
 
-    // Start PDF
-    const doc = new PDFDocument();
+    // build pdf and send as response
+    const pdfBuffer = await buildInvoicePdf(order, userInfo, items);
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
-      'Content-Disposition',
-      `attachment; filename=invoice_${orderId}.pdf`
+        'Content-Disposition',
+        `attachment; filename=invoice_${orderId}.pdf`
     );
 
-    doc.pipe(res);
-
-    // Title
-    doc.fontSize(22).text('INVOICE', { align: 'center' });
-    doc.moveDown();
-
-    // Order Info
-    doc.fontSize(12);
-    doc.text(`Order ID: ${order.id}`);
-    doc.text(`Status: ${order.status}`);
-    doc.text(`Date: ${order.createdAt}`);
-    doc.moveDown();
-
-    // User Info
-    doc.text(`Customer: ${userInfo.fullName}`);
-    doc.text(`Email: ${userInfo.email}`);
-    doc.moveDown();
-
-    // Items header
-    doc.fontSize(14).text('Items:', { underline: true });
-    doc.moveDown(0.5);
-
-    // Items list
-    for (const item of items) {
-      doc.fontSize(12).text(`Product #${item.productId}`);
-      doc.text(`Quantity: ${item.quantity}`);
-      doc.text(`Unit Price: $${item.unitPrice}`);
-      const subtotal = Number(item.unitPrice) * item.quantity;
-      doc.text(`Subtotal: $${subtotal.toFixed(2)}`);
-      doc.moveDown();
-    }
-
-    // Total
-    doc.fontSize(14).text(`Total: $${order.total}`, { align: 'right' });
-
-    doc.end();
+    res.send(pdfBuffer);
   } catch (err) {
     console.error('Invoice error:', err);
     res.status(500).json({ message: 'Server error' });
