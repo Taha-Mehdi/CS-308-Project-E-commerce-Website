@@ -6,7 +6,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "db:generate": "drizzle-kit generate --config=drizzle.config.cjs",
-    "db:migrate": "drizzle-kit up:pg"
+    "db:migrate": "drizzle-kit up:pg",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +31,8 @@
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.8",
-    "nodemon": "^3.1.11"
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^7.1.4"
   }
 }
