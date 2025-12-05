@@ -1,11 +1,14 @@
 const express = require('express');
 const { z } = require('zod');
 const { db } = require('../db');
-const { orders, orderItems, products } = require('../db/schema');
+const { orders, orderItems, products, users } = require('../db/schema');
 const { eq, inArray } = require('drizzle-orm');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
+const { sendInvoiceEmail } = require('../utils/email');
+const { buildInvoicePdf } = require('./invoice');
 
 const router = express.Router();
+
 
 // Zod schema for order creation
 const orderItemInputSchema = z.object({
@@ -72,13 +75,14 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const insertedOrders = await db
-      .insert(orders)
-      .values({
-        userId,
-        status: 'pending',
-        total: total.toFixed(2),
-      })
-      .returning();
+        .insert(orders)
+        .values({
+          userId,
+          // we treat checkout as paid since payment is mock
+          status: 'paid',
+          total: total.toFixed(2),
+        })
+        .returning();
 
     const order = insertedOrders[0];
 
@@ -92,15 +96,39 @@ router.post('/', authMiddleware, async (req, res) => {
       };
     });
 
+// save items
     await db.insert(orderItems).values(orderItemsToInsert);
 
+// update stock
     for (const item of items) {
       const p = productMap.get(item.productId);
       const newStock = p.stock - item.quantity;
       await db
-        .update(products)
-        .set({ stock: newStock })
-        .where(eq(products.id, item.productId));
+          .update(products)
+          .set({ stock: newStock })
+          .where(eq(products.id, item.productId));
+    }
+
+// load user info for invoice
+    const userRows = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId));
+
+    const userInfo = userRows[0];
+
+// build invoice PDF and email it
+    try {
+      const pdfBuffer = await buildInvoicePdf(
+          order,
+          userInfo,
+          orderItemsToInsert
+      );
+
+      await sendInvoiceEmail(userInfo.email, pdfBuffer, order.id);
+    } catch (emailErr) {
+      console.error('Failed to send invoice email:', emailErr);
+      // do not fail the order if email sending breaks
     }
 
     return res.status(201).json({
@@ -108,6 +136,7 @@ router.post('/', authMiddleware, async (req, res) => {
       orderId: order.id,
       total: order.total,
     });
+
   } catch (err) {
     console.error('Create order error:', err);
     return res.status(500).json({ message: 'Server error' });
