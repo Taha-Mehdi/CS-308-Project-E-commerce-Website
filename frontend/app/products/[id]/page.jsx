@@ -103,14 +103,54 @@ export default function ProductDetailPage() {
     setMessage("");
     setMessageType("info");
 
-    if (!user) {
-      setMessage("Please log in to add items to your bag.");
-      setMessageType("error");
-      return;
-    }
-
     if (!product) return;
 
+    // --- SCENARIO 1: GUEST USER (Local Storage) ---
+    if (!user) {
+      try {
+        // 1. Get existing cart
+        const guestCart = JSON.parse(localStorage.getItem("guestCart") || "[]");
+
+        // 2. Check if product is already in cart
+        const existingItem = guestCart.find(
+            (item) => item.productId === Number(product.id)
+        );
+
+        if (existingItem) {
+          // Update quantity
+          existingItem.quantity += Number(quantity);
+        } else {
+          // Add new item
+          // Note: We store name/price/image here so the Cart page can display it
+          // without needing to fetch the product again from the server.
+          guestCart.push({
+            productId: Number(product.id),
+            quantity: Number(quantity),
+            name: product.name,
+            price: Number(product.price),
+            imageUrl: product.imageUrl,
+          });
+        }
+
+        // 3. Save back to Local Storage
+        localStorage.setItem("guestCart", JSON.stringify(guestCart));
+
+        // 4. Notify the Navbar to update the badge
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("cart-updated"));
+        }
+
+        setMessage("Added to your bag.");
+        setMessageType("success");
+      } catch (err) {
+        console.error("Guest cart error:", err);
+        setMessage("Could not add to guest cart.");
+        setMessageType("error");
+      }
+      return; // <--- STOP HERE (Do not run the API code below)
+    }
+
+    // --- SCENARIO 2: LOGGED IN USER (Database) ---
     setSubmitting(true);
     try {
       await addToCartApi({
@@ -128,20 +168,14 @@ export default function ProductDetailPage() {
     } catch (err) {
       console.error("Add to cart error:", err);
 
-      // apiRequest throws an Error with .status and .message
       if (err.status === 401) {
-        // Session is no longer valid (token invalid or refresh failed)
         setMessage("Your session has expired. Please log in again.");
         setMessageType("error");
-
-        // Clear AuthContext + localStorage tokens
         logout();
-
-        // Optionally redirect to login page
         router.push("/login");
       } else {
         setMessage(
-          err.message ||
+            err.message ||
             "Could not add this pair to your bag. Please try again."
         );
         setMessageType("error");
