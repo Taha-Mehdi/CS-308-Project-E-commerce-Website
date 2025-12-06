@@ -15,6 +15,7 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [invoiceUrl, setInvoiceUrl] = useState(null);
   const [lastOrderId, setLastOrderId] = useState(null);
   const [lastOrderTotal, setLastOrderTotal] = useState(null);
   const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
@@ -258,88 +259,133 @@ export default function CartPage() {
     }
   }
 
-  async function handleCheckout() {
-    try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
+ async function handleCheckout() {
+  try {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token")
+        : null;
 
-      if (!token) {
-        setMessage("Please login again to place an order.");
-        if (typeof window !== "undefined") {
-          window.alert("Please login again to place an order.");
-        }
-        return;
-      }
-
-      if (enrichedItems.length === 0) {
-        setMessage("Your bag is empty.");
-        return;
-      }
-
-      setPlacingOrder(true);
-      setMessage("");
-
-      const itemsPayload = enrichedItems.map((ci) => ({
-        productId: ci.productId,
-        quantity: ci.quantity,
-      }));
-
-      const res = await fetch(`${apiBase}/orders`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ items: itemsPayload }),
-      });
-
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      }
-
-      if (!res.ok) {
-        console.error("Place order failed:", data || {});
-        const msg =
-          (data && data.message) ||
-          "Could not place this order. Please try again.";
-        setMessage(msg);
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
-        return;
-      }
-
-      const orderId = data?.orderId || null;
-      const total = data?.total || null;
-
-      setLastOrderId(orderId);
-      setLastOrderTotal(total);
-      setCartItems([]);
+    if (!token) {
+      setMessage("Please login again to place an order.");
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("cart-updated"));
+        window.alert("Please login again to place an order.");
       }
+      return;
+    }
 
-      setMessage("Order placed successfully.");
-    } catch (err) {
-      console.error("Place order error:", err);
-      const msg = "Could not place this order. Please try again.";
+    if (enrichedItems.length === 0) {
+      setMessage("Your bag is empty.");
+      return;
+    }
+
+    setPlacingOrder(true);
+    setMessage("");
+    // clear any previous invoice shown
+    if (invoiceUrl) {
+      URL.revokeObjectURL(invoiceUrl);
+      setInvoiceUrl(null);
+    }
+
+    const itemsPayload = enrichedItems.map((ci) => ({
+      productId: ci.productId,
+      quantity: ci.quantity,
+    }));
+
+    const res = await fetch(`${apiBase}/orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ items: itemsPayload }),
+    });
+
+    const ct = res.headers.get("content-type") || "";
+    let data = null;
+    if (ct.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+    }
+
+    if (!res.ok) {
+      console.error("Place order failed:", data || {});
+      const msg =
+        (data && data.message) ||
+        "Could not place this order. Please try again.";
       setMessage(msg);
       if (typeof window !== "undefined") {
         window.alert(msg);
       }
-    } finally {
-      setPlacingOrder(false);
+      return;
     }
-  }
 
+    const orderId = data?.orderId || null;
+    const total = data?.total || null;
+
+    setLastOrderId(orderId);
+    setLastOrderTotal(total);
+    setCartItems([]);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("cart-updated"));
+    }
+
+    setMessage("Order placed successfully.");
+
+    // === NEW: fetch invoice PDF and show it immediately ===
+    if (orderId) {
+      try {
+        const invRes = await fetch(`${apiBase}/invoice/${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!invRes.ok) {
+          let errMsg = "Invoice fetch failed.";
+          const ict = invRes.headers.get("content-type") || "";
+          if (ict.includes("application/json")) {
+            try {
+              const j = await invRes.json();
+              if (j && j.message) errMsg = j.message;
+            } catch {}
+          }
+          console.error("Invoice fetch failed", invRes.status);
+          setMessage(errMsg);
+          // leave the Download Invoice button as fallback
+        } else {
+          const ict = invRes.headers.get("content-type") || "";
+          if (!ict.includes("application/pdf")) {
+            setMessage("Unexpected invoice response.");
+          } else {
+            const blob = await invRes.blob();
+            const url = URL.createObjectURL(blob);
+            setInvoiceUrl(url);
+            // open in new tab so TA can see it immediately
+            if (typeof window !== "undefined") {
+              window.open(url, "_blank");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Invoice fetch error:", err);
+        setMessage("Invoice fetch failed. You can download it from the button.");
+      }
+    }
+    // === end new invoice fetch ===
+
+  } catch (err) {
+    console.error("Place order error:", err);
+    const msg = "Could not place this order. Please try again.";
+    setMessage(msg);
+    if (typeof window !== "undefined") {
+      window.alert(msg);
+    }
+  } finally {
+    setPlacingOrder(false);
+  }
+}
   async function handleDownloadInvoice() {
     if (!lastOrderId) return;
 
@@ -534,7 +580,7 @@ export default function CartPage() {
               href="/products"
               className="inline-flex px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all active:scale-[0.97]"
             >
-              Browse drops
+              Browse products
             </Link>
           </div>
         ) : (
@@ -666,6 +712,24 @@ export default function CartPage() {
                   Taxes and shipping are calculated at checkout.
                 </p>
               </div>
+              {invoiceUrl && (
+                <div className="mt-4">
+                  <h3 className="font-semibold">Invoice preview</h3>
+                  <div className="border rounded overflow-hidden" style={{ height: 600 }}>
+                    <iframe
+                      src={invoiceUrl}
+                      title="Invoice PDF"
+                      width="100%"
+                      height="100%"
+                      style={{ border: 0 }}
+                    />
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    If the invoice does not open, use the Download invoice button.
+                  </p>
+                </div>
+              )}
+              
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                 <button
                   type="button"
