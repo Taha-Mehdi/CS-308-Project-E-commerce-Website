@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const { router: invoiceRoutes } = require('./routes/invoice');
 const path = require("path");
+const reviewsRoutes = require('./routes/reviews');
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/cart', cartRoutes);
 app.use('/invoice', invoiceRoutes);
+app.use('/reviews', reviewsRoutes);
 
 // Seed default roles on startup
 async function ensureDefaultRoles() {
