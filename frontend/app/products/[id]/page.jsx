@@ -5,12 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import StockBadge from "../../../components/StockBadge";
-import { addReview, getReviewsByProduct } from "../../../lib/reviews";
 import { useAuth } from "../../../context/AuthContext";
 import { addToCartApi } from "../../../lib/api";
 
 export default function ProductDetailPage() {
-  const { user, logout } = useAuth(); // now also using logout
+  const { user, logout } = useAuth();
   const params = useParams();
   const router = useRouter();
   const productId = params?.id;
@@ -23,12 +22,14 @@ export default function ProductDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
+
+  // REVIEWS STATE
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [confirmDelivery, setConfirmDelivery] = useState(false);
 
-  // Load single product
+  // 1. LOAD PRODUCT
   useEffect(() => {
     if (!productId) return;
 
@@ -38,43 +39,12 @@ export default function ProductDetailPage() {
 
       try {
         const res = await fetch(`${apiBase}/products/${productId}`);
-
-        if (!res.ok) {
-          setProduct(null);
-          setMessage("Failed to load product.");
-          setMessageType("error");
-          setLoadingProduct(false);
-          return;
-        }
-
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          setProduct(null);
-          setMessage("Unexpected response from server.");
-          setMessageType("error");
-          setLoadingProduct(false);
-          return;
-        }
-
-        let data;
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-
-        if (!data || !data.id) {
-          setProduct(null);
-          setMessage("Product not found.");
-          setMessageType("error");
-        } else {
-          setProduct(data);
-          setMessage("");
-        }
+        if (!res.ok) throw new Error("Failed to load");
+        const data = await res.json();
+        setProduct(data);
       } catch (err) {
-        console.error("Product detail load error:", err);
         setProduct(null);
-        setMessage("Failed to load product.");
+        setMessage("Product not found.");
         setMessageType("error");
       } finally {
         setLoadingProduct(false);
@@ -84,45 +54,51 @@ export default function ProductDetailPage() {
     loadProduct();
   }, [apiBase, productId]);
 
-  // Load local reviews for this product
+  // 2. LOAD REVIEWS (FROM REAL API NOW!)
   useEffect(() => {
     if (!productId) return;
-    const next = getReviewsByProduct(productId);
-    setReviews(next);
-  }, [productId]);
+
+    async function loadReviews() {
+      try {
+        const res = await fetch(`${apiBase}/reviews/product/${productId}`);
+        if (res.ok) {
+          const data = await res.json();
+          // Backend returns the list, we just save it
+          setReviews(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("Failed to load reviews", err);
+      }
+    }
+
+    loadReviews();
+  }, [apiBase, productId]);
 
   function handleQuantityChange(e) {
     const value = Number(e.target.value);
-    if (Number.isNaN(value)) return;
-    if (value < 1) setQuantity(1);
-    else if (value > 99) setQuantity(99);
-    else setQuantity(value);
+    if (!Number.isNaN(value) && value >= 1 && value <= 99) {
+      setQuantity(value);
+    }
   }
 
+  // 3. ADD TO CART (With Guest Logic)
   async function handleAddToCart() {
     setMessage("");
     setMessageType("info");
 
     if (!product) return;
 
-    // --- SCENARIO 1: GUEST USER (Local Storage) ---
+    // --- GUEST LOGIC ---
     if (!user) {
       try {
-        // 1. Get existing cart
         const guestCart = JSON.parse(localStorage.getItem("guestCart") || "[]");
-
-        // 2. Check if product is already in cart
         const existingItem = guestCart.find(
             (item) => item.productId === Number(product.id)
         );
 
         if (existingItem) {
-          // Update quantity
           existingItem.quantity += Number(quantity);
         } else {
-          // Add new item
-          // Note: We store name/price/image here so the Cart page can display it
-          // without needing to fetch the product again from the server.
           guestCart.push({
             productId: Number(product.id),
             quantity: Number(quantity),
@@ -131,53 +107,35 @@ export default function ProductDetailPage() {
             imageUrl: product.imageUrl,
           });
         }
-
-        // 3. Save back to Local Storage
         localStorage.setItem("guestCart", JSON.stringify(guestCart));
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("cart-updated"));
 
-        // 4. Notify the Navbar to update the badge
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("cart-updated"));
-        }
-
-        setMessage("Added to your bag.");
+        setMessage("Added to your bag (Guest).");
         setMessageType("success");
       } catch (err) {
-        console.error("Guest cart error:", err);
         setMessage("Could not add to guest cart.");
         setMessageType("error");
       }
-      return; // <--- STOP HERE (Do not run the API code below)
+      return;
     }
 
-    // --- SCENARIO 2: LOGGED IN USER (Database) ---
+    // --- LOGGED IN LOGIC ---
     setSubmitting(true);
     try {
       await addToCartApi({
         productId: Number(product.id),
         quantity: Number(quantity),
       });
-
-      // update navbar cart badge
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("cart-updated"));
-      }
-
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("cart-updated"));
       setMessage("Added to your bag.");
       setMessageType("success");
     } catch (err) {
-      console.error("Add to cart error:", err);
-
       if (err.status === 401) {
-        setMessage("Your session has expired. Please log in again.");
+        setMessage("Session expired. Please log in.");
         setMessageType("error");
         logout();
-        router.push("/login");
       } else {
-        setMessage(
-            err.message ||
-            "Could not add this pair to your bag. Please try again."
-        );
+        setMessage("Could not add to bag.");
         setMessageType("error");
       }
     } finally {
@@ -185,43 +143,22 @@ export default function ProductDetailPage() {
     }
   }
 
-  async function handleSubmitReview(e) {
+  // 4. SUBMIT REVIEW (To Real API)
+    async function handleSubmitReview(e) {
     e.preventDefault();
-
-    // 1. Basic Checks
-    if (!user) {
-      setMessage("Please log in to leave a review.");
-      setMessageType("error");
-      return;
-    }
-    if (!confirmDelivery) {
-      setMessage("Please confirm you received the product before reviewing.");
-      setMessageType("error");
-      return;
-    }
-    if (!rating || !reviewText.trim()) {
-      setMessage("Please add a rating and a comment.");
-      setMessageType("error");
-      return;
-    }
+    if (!user) return setMessage("Please log in.");
+    if (!confirmDelivery) return setMessage("Please confirm delivery.");
+    if (!reviewText.trim()) return setMessage("Please add a comment.");
 
     const token = localStorage.getItem("token");
-    if (!token) {
-      setMessage("Session invalid. Please login again.");
-      setMessageType("error");
-      return;
-    }
-
     setSubmitting(true);
-    setMessage("");
 
     try {
-      // 2. SEND TO BACKEND
       const res = await fetch(`${apiBase}/reviews`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // Needed for the "Did I buy this?" check
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           productId: Number(productId),
@@ -232,35 +169,27 @@ export default function ProductDetailPage() {
 
       const data = await res.json();
 
-      // 3. HANDLE ERRORS (e.g., Not Delivered)
       if (!res.ok) {
-        setMessageType("error");
         setMessage(data.message || "Failed to submit review.");
-        setSubmitting(false);
-        return;
+        setMessageType("error");
+      } else {
+        // Success! Add to list locally so we see it immediately
+        const newReview = {
+          id: Date.now(),
+          userName: user.fullName || user.email || "Me",
+          rating: Number(rating),
+          comment: null,
+          status: "pending",
+          createdAt: new Date().toISOString()
+        };
+        setReviews(prev => [newReview, ...prev]);
+        setReviewText("");
+        setConfirmDelivery(false);
+        setMessage("Review submitted! Comment pending approval.");
+        setMessageType("success");
       }
-
-      // 4. SUCCESS: Update UI immediately
-      // We manually add the new review to the list so the user sees it right away
-      const newReview = {
-        id: Date.now(), // Temporary ID until page refresh
-        userId: user.id,
-        userEmail: user.email,
-        rating: Number(rating),
-        comment: reviewText.trim(), // We show it locally so the user knows it worked
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      };
-
-      setReviews((prev) => [newReview, ...prev]);
-      setReviewText("");
-      setConfirmDelivery(false);
-      setMessage("Review submitted! Ratings are live, comment is pending approval.");
-      setMessageType("success");
-
     } catch (err) {
-      console.error("Review submit error:", err);
-      setMessage("Server error. Please try again later.");
+      setMessage("Server error.");
       setMessageType("error");
     } finally {
       setSubmitting(false);
@@ -268,8 +197,7 @@ export default function ProductDetailPage() {
   }
 
   const price = product ? Number(product.price || 0) : 0;
-  const imageUrl =
-      product && product.imageUrl ? `${apiBase}${product.imageUrl}` : null;
+  const imageUrl = product && product.imageUrl ? (product.imageUrl.startsWith("http") ? product.imageUrl : `${apiBase}${product.imageUrl}`) : null;
 
   return (
       <SiteLayout>
@@ -277,54 +205,28 @@ export default function ProductDetailPage() {
           {/* Breadcrumb + back link */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-[11px] text-gray-500">
-              <Link
-                  href="/"
-                  className="hover:text-gray-800 hover:underline underline-offset-4"
-              >
-                Home
-              </Link>
+              <Link href="/" className="hover:text-gray-800 hover:underline underline-offset-4">Home</Link>
               <span>/</span>
-              <Link
-                  href="/products"
-                  className="hover:text-gray-800 hover:underline underline-offset-4"
-              >
-                Drops
-              </Link>
+              <Link href="/products" className="hover:text-gray-800 hover:underline underline-offset-4">Drops</Link>
               <span>/</span>
-              <span className="text-gray-800">
-              {product ? product.name : "Pair"}
-            </span>
+              <span className="text-gray-800">{product ? product.name : "Pair"}</span>
             </div>
-            <button
-                type="button"
-                onClick={() => router.back()}
-                className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black"
-            >
-              Back
-            </button>
+            <button onClick={() => router.back()} className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black">Back</button>
           </div>
 
           {loadingProduct ? (
               <p className="text-sm text-gray-500">Loading pair…</p>
           ) : !product ? (
-              <p className="text-sm text-gray-500">
-                We couldn&apos;t find this pair. It might have been removed.
-              </p>
+              <p className="text-sm text-gray-500">Product not found.</p>
           ) : (
               <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
                 {/* Left: image */}
                 <div className="rounded-3xl bg-white border border-gray-200 overflow-hidden">
                   <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                     {imageUrl ? (
-                        <img
-                            src={imageUrl}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                        />
+                        <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
                     ) : (
-                        <span className="text-[11px] uppercase tracking-[0.24em] text-gray-400">
-                    Sneaks-up
-                  </span>
+                        <span className="text-[11px] uppercase tracking-[0.24em] text-gray-400">Sneaks-up</span>
                     )}
                   </div>
                 </div>
@@ -332,55 +234,23 @@ export default function ProductDetailPage() {
                 {/* Right: details */}
                 <div className="space-y-5">
                   <div className="space-y-1">
-                    <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
-                      Drop
-                    </p>
-                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-                      {product.name}
-                    </h1>
+                    <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">Drop</p>
+                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">{product.name}</h1>
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-lg sm:text-xl font-semibold text-gray-900">
-                      ${price.toFixed(2)}
-                    </p>
+                    <p className="text-lg sm:text-xl font-semibold text-gray-900">${price.toFixed(2)}</p>
                     <StockBadge stock={product.stock} tone="muted" />
                   </div>
 
                   {product.description && (
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        {product.description}
-                      </p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{product.description}</p>
                   )}
-
-                  {/* Product metadata (mock/display only) */}
-                  <div className="grid sm:grid-cols-2 gap-3 text-xs text-gray-600">
-                    <div className="rounded-2xl border border-gray-200 bg-white/60 px-3 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">
-                        Model / Serial
-                      </p>
-                      <p className="font-semibold text-gray-900">
-                        {product.model || "Not set"} ·{" "}
-                        {product.serialNumber || "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-gray-200 bg-white/60 px-3 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">
-                        Warranty / Distributor
-                      </p>
-                      <p className="font-semibold text-gray-900">
-                        {product.warrantyStatus || "Standard warranty"} ·{" "}
-                        {product.distributor || "Unknown distributor"}
-                      </p>
-                    </div>
-                  </div>
 
                   {/* Add to bag controls */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <label className="text-[11px] text-gray-500 uppercase tracking-[0.2em]">
-                        Quantity
-                      </label>
+                      <label className="text-[11px] text-gray-500 uppercase tracking-[0.2em]">Quantity</label>
                       <input
                           type="number"
                           min={1}
@@ -397,23 +267,11 @@ export default function ProductDetailPage() {
                         onClick={handleAddToCart}
                         className="w-full rounded-full bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] py-3 hover:bg-gray-900 active:bg-black disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
-                      {product.stock === 0
-                          ? "Sold out"
-                          : submitting
-                              ? "Adding…"
-                              : "Add to bag"}
+                      {product.stock === 0 ? "Sold out" : submitting ? "Adding…" : "Add to bag"}
                     </button>
 
                     {message && (
-                        <p
-                            className={`text-xs ${
-                                messageType === "error"
-                                    ? "text-red-600"
-                                    : messageType === "success"
-                                        ? "text-green-600"
-                                        : "text-gray-600"
-                            }`}
-                        >
+                        <p className={`text-xs ${messageType === "error" ? "text-red-600" : "text-green-600"}`}>
                           {message}
                         </p>
                     )}
@@ -422,100 +280,60 @@ export default function ProductDetailPage() {
               </div>
           )}
 
-          {/* Reviews */}
+          {/* Reviews Section */}
           {product && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
-                      Reviews & Ratings
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Approved reviews are shown below. New reviews need manager
-                      approval.
-                    </p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Reviews</p>
+                    <p className="text-sm text-gray-600">Recent feedback on this drop.</p>
                   </div>
-                  <span className="text-[11px] text-gray-500">
-                {
-                  reviews.filter((r) => r.status === "approved").length
-                }{" "}
-                    approved ·{" "}
-                    {
-                      reviews.filter((r) => r.status === "pending").length
-                    }{" "}
-                    pending
-              </span>
                 </div>
 
-                {reviews.filter((r) => r.status === "approved").length === 0 ? (
+                {reviews.length === 0 ? (
                     <p className="text-sm text-gray-500">No reviews yet.</p>
                 ) : (
                     <div className="space-y-2">
-                      {reviews
-                          .filter((r) => r.status === "approved")
-                          .sort(
-                              (a, b) =>
-                                  new Date(b.createdAt) - new Date(a.createdAt)
-                          )
-                          .map((rev) => (
-                              <div
-                                  key={rev.id}
-                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs font-semibold text-gray-900">
-                                    {rev.userEmail || "Customer"}
-                                  </p>
-                                  <span className="text-[11px] text-amber-600 font-semibold">
-                          {"★"
-                              .repeat(
-                                  Math.max(1, Math.min(5, rev.rating || 1))
-                              )
-                              .padEnd(5, "☆")}
-                        </span>
-                                </div>
+                      {reviews.map((rev) => (
+                          <div key={rev.id} className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold text-gray-900">{rev.userName || "User"}</p>
+                              <span className="text-[11px] text-amber-600 font-semibold">
+                        {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
+                      </span>
+                            </div>
+
+                            {/* --- THE FIX: SHOW COMMENT IF APPROVED --- */}
+                            {rev.status === 'approved' || rev.comment ? (
                                 <p className="text-xs text-gray-700 mt-1">
-                                  {rev.comment}
+                                  {/* If comment is null (from backend pending), show placeholder. If text exists, show it. */}
+                                  {rev.comment || <span className="text-gray-400 italic">(Comment awaiting approval...)</span>}
                                 </p>
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                  {rev.createdAt
-                                      ? new Date(
-                                          rev.createdAt
-                                      ).toLocaleString()
-                                      : ""}
+                            ) : (
+                                <p className="text-[10px] text-gray-400 italic mt-1">
+                                  (Comment awaiting approval...)
                                 </p>
-                              </div>
-                          ))}
+                            )}
+
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : ""}
+                            </p>
+                          </div>
+                      ))}
                     </div>
                 )}
 
-                <form
-                    onSubmit={handleSubmitReview}
-                    className="rounded-3xl border border-gray-200 bg-white/80 p-4 space-y-3"
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
-                    Leave a review
-                  </p>
-                  {!user && (
-                      <p className="text-sm text-red-600">
-                        Please log in before rating this product.
-                      </p>
-                  )}
+                <form onSubmit={handleSubmitReview} className="rounded-3xl border border-gray-200 bg-white/80 p-4 space-y-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Leave a review</p>
                   <div className="flex items-center gap-3">
-                    <label className="text-xs text-gray-700 font-medium">
-                      Rating
-                    </label>
+                    <label className="text-xs text-gray-700 font-medium">Rating</label>
                     <select
                         value={rating}
                         onChange={(e) => setRating(Number(e.target.value))}
-                        className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-black/20"
+                        className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900"
                         disabled={!user}
                     >
-                      {[1, 2, 3, 4, 5].map((n) => (
-                          <option key={n} value={n}>
-                            {n} star{n === 1 ? "" : "s"}
-                          </option>
-                      ))}
+                      {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} Stars</option>)}
                     </select>
                   </div>
                   <textarea
@@ -523,24 +341,17 @@ export default function ProductDetailPage() {
                       onChange={(e) => setReviewText(e.target.value)}
                       rows={3}
                       placeholder="Share your experience…"
-                      className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                      className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                       disabled={!user}
                   />
                   <label className="flex items-center gap-2 text-xs text-gray-700">
-                    <input
-                        type="checkbox"
-                        checked={confirmDelivery}
-                        onChange={(e) =>
-                            setConfirmDelivery(e.target.checked)
-                        }
-                        disabled={!user}
-                    />
-                    I confirm I received this product (required to review)
+                    <input type="checkbox" checked={confirmDelivery} onChange={(e) => setConfirmDelivery(e.target.checked)} disabled={!user} />
+                    I confirm I received this product
                   </label>
                   <button
                       type="submit"
                       disabled={!user}
-                      className="w-full rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.16em] py-2.5 hover:bg-gray-900 disabled:opacity-50"
+                      className="w-full rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.16em] py-2.5 disabled:opacity-50"
                   >
                     Submit review
                   </button>
