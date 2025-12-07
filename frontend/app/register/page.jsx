@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
+// 1. IMPORT API HELPER
+import { addToCartApi } from "../../lib/api";
 
 export default function RegisterPage() {
   const { login } = useAuth();
@@ -54,6 +56,7 @@ export default function RegisterPage() {
     }
 
     try {
+      // 1. REGISTER
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST",
         headers: {
@@ -78,7 +81,7 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         setMessage(
-          (data && data.message) ||
+            (data && data.message) ||
             "Registration failed. Please check your details."
         );
         setSubmitting(false);
@@ -91,7 +94,11 @@ export default function RegisterPage() {
         return;
       }
 
-      // Auto-login after signup
+      // 2. AUTO-LOGIN LOCAL STATE
+      // We do this first so the token is ready in localStorage for the API calls below
+      // Note: We might need to manually set the token just in case `login` is async or slow
+      localStorage.setItem("token", data.token);
+
       try {
         login(data.token, data.user);
       } catch (err) {
@@ -101,6 +108,39 @@ export default function RegisterPage() {
         return;
       }
 
+      // 3. MERGE GUEST CART (THE FIX)
+      // Check if user has items in their local cart before they signed up
+      try {
+        const guestCart = JSON.parse(localStorage.getItem("guestCart") || "[]");
+
+        if (guestCart.length > 0) {
+          console.log("Merging guest cart to new account...", guestCart);
+
+          // Loop through and upload each item
+          for (const item of guestCart) {
+            try {
+              // We use the token from data.token directly to be safe
+              // addToCartApi usually reads from localStorage, but we just set it above.
+              await addToCartApi({
+                productId: item.productId,
+                quantity: item.quantity
+              });
+            } catch (err) {
+              console.error("Failed to merge item:", item.name);
+            }
+          }
+
+          // Clear guest cart
+          localStorage.removeItem("guestCart");
+          // Update UI
+          window.dispatchEvent(new Event("cart-updated"));
+        }
+      } catch (mergeErr) {
+        console.error("Error merging cart:", mergeErr);
+        // We don't stop the redirect, just log the error
+      }
+
+      // 4. REDIRECT
       router.push(nextPath);
     } catch (err) {
       console.error("Register error:", err);
@@ -110,103 +150,103 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Outer gradient + white-ish glow */}
-        <div className="rounded-3xl bg-gradient-to-br from-black via-neutral-900 to-black p-[1px] shadow-[0_0_80px_rgba(255,255,255,0.18)]">
-          {/* Inner panel */}
-          <div className="rounded-[calc(1.5rem-1px)] bg-[#050505] px-6 py-7 sm:px-8 sm:py-8 space-y-6">
-            {/* Header */}
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gray-400">
-                SNEAKS-UP
-              </p>
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-                Create your account
-              </h1>
-              <p className="text-xs text-gray-400">
-                Sign up to start collecting drops, managing your bag, and
-                tracking orders.
+      <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          {/* Outer gradient + white-ish glow */}
+          <div className="rounded-3xl bg-gradient-to-br from-black via-neutral-900 to-black p-[1px] shadow-[0_0_80px_rgba(255,255,255,0.18)]">
+            {/* Inner panel */}
+            <div className="rounded-[calc(1.5rem-1px)] bg-[#050505] px-6 py-7 sm:px-8 sm:py-8 space-y-6">
+              {/* Header */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gray-400">
+                  SNEAKS-UP
+                </p>
+                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+                  Create your account
+                </h1>
+                <p className="text-xs text-gray-400">
+                  Sign up to start collecting drops, managing your bag, and
+                  tracking orders.
+                </p>
+              </div>
+
+              {/* Error box */}
+              {message && (
+                  <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                    {message}
+                  </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
+                    Full name
+                  </label>
+                  <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Test User"
+                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
+                    Email
+                  </label>
+                  <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
+                    Password
+                  </label>
+                  <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full mt-2 rounded-full bg-blue-600 text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] text-white py-2.5 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                >
+                  {submitting ? "Creating account…" : "Create account"}
+                </button>
+              </form>
+
+              {/* Footer links */}
+              <div className="pt-2 flex items-center justify-between text-[11px] text-gray-400">
+                <span>Already have an account?</span>
+                <Link
+                    href="/login"
+                    className="text-gray-100 underline underline-offset-4 hover:text-white"
+                >
+                  Sign in instead
+                </Link>
+              </div>
+
+              <p className="text-[10px] text-gray-500 pt-1">
+                Your password is stored hashed on the server for security.
               </p>
             </div>
-
-            {/* Error box */}
-            {message && (
-              <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-                {message}
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Test User"
-                  className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full mt-2 rounded-full bg-blue-600 text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] text-white py-2.5 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-              >
-                {submitting ? "Creating account…" : "Create account"}
-              </button>
-            </form>
-
-            {/* Footer links */}
-            <div className="pt-2 flex items-center justify-between text-[11px] text-gray-400">
-              <span>Already have an account?</span>
-              <Link
-                href="/login"
-                className="text-gray-100 underline underline-offset-4 hover:text-white"
-              >
-                Sign in instead
-              </Link>
-            </div>
-
-            <p className="text-[10px] text-gray-500 pt-1">
-              Your password is stored hashed on the server for security.
-            </p>
           </div>
         </div>
       </div>
-    </div>
   );
 }
