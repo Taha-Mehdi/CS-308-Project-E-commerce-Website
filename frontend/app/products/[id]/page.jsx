@@ -144,7 +144,7 @@ export default function ProductDetailPage() {
   }
 
   // 4. SUBMIT REVIEW (To Real API)
-    async function handleSubmitReview(e) {
+  async function handleSubmitReview(e) {
     e.preventDefault();
     if (!user) return setMessage("Please log in.");
     if (!confirmDelivery) return setMessage("Please confirm delivery.");
@@ -201,79 +201,105 @@ export default function ProductDetailPage() {
 
   return (
       <SiteLayout>
-        <div className="space-y-6">
+        <div className="space-y-10 pb-20">
           {/* Breadcrumb + back link */}
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[11px] text-gray-500">
-              <Link href="/" className="hover:text-gray-800 hover:underline underline-offset-4">Home</Link>
+            <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+              <Link href="/" className="hover:text-black hover:underline underline-offset-4">Home</Link>
               <span>/</span>
-              <Link href="/products" className="hover:text-gray-800 hover:underline underline-offset-4">Drops</Link>
+              <Link href="/products" className="hover:text-black hover:underline underline-offset-4">Drops</Link>
               <span>/</span>
-              <span className="text-gray-800">{product ? product.name : "Pair"}</span>
+              <span className="text-black font-bold">{product ? product.name : "Pair"}</span>
             </div>
-            <button onClick={() => router.back()} className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black">Back</button>
+            <button onClick={() => router.back()} className="text-xs font-bold text-gray-600 underline underline-offset-4 hover:text-black">Go Back</button>
           </div>
 
           {loadingProduct ? (
-              <p className="text-sm text-gray-500">Loading pair…</p>
+              <div className="flex justify-center py-20"><p className="text-lg text-gray-500 font-medium animate-pulse">Loading pair...</p></div>
           ) : !product ? (
-              <p className="text-sm text-gray-500">Product not found.</p>
+              <p className="text-lg text-gray-500">Product not found.</p>
           ) : (
-              <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
+              <div className="grid gap-12 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
                 {/* Left: image */}
-                <div className="rounded-3xl bg-white border border-gray-200 overflow-hidden">
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                <div className="rounded-[2rem] bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-500">
+                  <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
                     {imageUrl ? (
-                        <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                        <img src={imageUrl} alt={product.name} className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
                     ) : (
-                        <span className="text-[11px] uppercase tracking-[0.24em] text-gray-400">Sneaks-up</span>
+                        <span className="text-xs uppercase tracking-[0.3em] text-gray-300 font-bold">No Image</span>
                     )}
                   </div>
                 </div>
 
                 {/* Right: details */}
-                <div className="space-y-5">
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">Drop</p>
-                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">{product.name}</h1>
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold tracking-[0.25em] uppercase text-gray-400">Sneaks-Up Drop</p>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-black leading-tight">{product.name}</h1>
                   </div>
 
-                  <div className="space-y-2">
-                    <p className="text-lg sm:text-xl font-semibold text-gray-900">${price.toFixed(2)}</p>
-                    <StockBadge stock={product.stock} tone="muted" />
+                  <div className="space-y-3">
+                    <p className="text-2xl sm:text-3xl font-bold text-black">${price.toFixed(2)}</p>
+                    <StockBadge stock={product.stock} />
+                  </div>
+
+                  {/* --- NEW SPECIFICATIONS / WARRANTY BOX --- */}
+                  <div className="grid grid-cols-2 gap-4 rounded-2xl bg-gray-50 p-5 border border-gray-100">
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Model</p>
+                      <p className="text-sm font-bold text-gray-900">{product.model || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Serial</p>
+                      <p className="text-sm font-bold text-gray-900">{product.serialNumber || product.serial || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Warranty</p>
+                      <p className={`text-sm font-bold ${product.warrantyStatus ? "text-green-600" : "text-gray-900"}`}>
+                        {product.warrantyStatus ? "Active Coverage" : "Standard"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Distributor</p>
+                      <p className="text-sm font-bold text-gray-900 truncate">{product.distributorInfo || "Official Store"}</p>
+                    </div>
                   </div>
 
                   {product.description && (
-                      <p className="text-sm text-gray-700 leading-relaxed">{product.description}</p>
+                      <div className="prose prose-sm text-gray-600 leading-relaxed">
+                        <p>{product.description}</p>
+                      </div>
                   )}
 
                   {/* Add to bag controls */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <label className="text-[11px] text-gray-500 uppercase tracking-[0.2em]">Quantity</label>
-                      <input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={quantity}
-                          onChange={handleQuantityChange}
-                          className="w-20 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/30"
-                      />
+                  <div className="pt-4 space-y-4 border-t border-gray-100">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center border border-gray-300 rounded-full px-4 py-3 bg-white">
+                        <span className="text-xs font-bold mr-3 text-gray-500 uppercase tracking-wider">QTY</span>
+                        <input
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={quantity}
+                            onChange={handleQuantityChange}
+                            className="w-12 text-center text-lg font-bold text-black outline-none bg-transparent"
+                        />
+                      </div>
+
+                      <button
+                          type="button"
+                          disabled={submitting || product.stock === 0}
+                          onClick={handleAddToCart}
+                          className="flex-1 rounded-full bg-black text-white text-sm font-bold uppercase tracking-[0.2em] py-4 hover:bg-gray-800 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-gray-200"
+                      >
+                        {product.stock === 0 ? "Sold out" : submitting ? "Adding..." : "Add to bag"}
+                      </button>
                     </div>
 
-                    <button
-                        type="button"
-                        disabled={submitting || product.stock === 0}
-                        onClick={handleAddToCart}
-                        className="w-full rounded-full bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] py-3 hover:bg-gray-900 active:bg-black disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {product.stock === 0 ? "Sold out" : submitting ? "Adding…" : "Add to bag"}
-                    </button>
-
                     {message && (
-                        <p className={`text-xs ${messageType === "error" ? "text-red-600" : "text-green-600"}`}>
+                        <div className={`p-3 rounded-xl text-center text-sm font-bold ${messageType === "error" ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"}`}>
                           {message}
-                        </p>
+                        </div>
                     )}
                   </div>
                 </div>
@@ -282,80 +308,103 @@ export default function ProductDetailPage() {
 
           {/* Reviews Section */}
           {product && (
-              <div className="space-y-4">
+              <div className="border-t border-gray-200 pt-12 space-y-8">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Reviews</p>
-                    <p className="text-sm text-gray-600">Recent feedback on this drop.</p>
+                    <h3 className="text-2xl font-bold text-black">Reviews & Ratings</h3>
+                    <p className="text-sm text-gray-500 mt-1">See what others are saying about this drop.</p>
                   </div>
                 </div>
 
                 {reviews.length === 0 ? (
-                    <p className="text-sm text-gray-500">No reviews yet.</p>
+                    <div className="p-8 text-center bg-gray-50 rounded-3xl border border-gray-100">
+                      <p className="text-gray-500 italic">No reviews yet. Be the first to rate this pair!</p>
+                    </div>
                 ) : (
-                    <div className="space-y-2">
+                    <div className="grid gap-4 md:grid-cols-2">
                       {reviews.map((rev) => (
-                          <div key={rev.id} className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs font-semibold text-gray-900">{rev.userName || "User"}</p>
-                              <span className="text-[11px] text-amber-600 font-semibold">
-                        {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
-                      </span>
+                          <div key={rev.id} className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <p className="font-bold text-gray-900">{rev.userName || "Verified User"}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">
+                                  {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : "Just now"}
+                                </p>
+                              </div>
+                              {/* BIG YELLOW STARS */}
+                              <div className="text-yellow-400 text-lg tracking-widest">
+                                {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
+                              </div>
                             </div>
 
-                            {/* --- THE FIX: SHOW COMMENT IF APPROVED --- */}
-                            {rev.status === 'approved' || rev.comment ? (
-                                <p className="text-xs text-gray-700 mt-1">
-                                  {/* If comment is null (from backend pending), show placeholder. If text exists, show it. */}
-                                  {rev.comment || <span className="text-gray-400 italic">(Comment awaiting approval...)</span>}
-                                </p>
-                            ) : (
-                                <p className="text-[10px] text-gray-400 italic mt-1">
-                                  (Comment awaiting approval...)
-                                </p>
-                            )}
-
-                            <p className="text-[10px] text-gray-400 mt-1">
-                              {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : ""}
-                            </p>
+                            {/* --- COMMENT LOGIC --- */}
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              {rev.status === 'approved' || rev.comment ? (
+                                  <p className="text-sm text-gray-700 leading-relaxed">
+                                    {rev.comment || <span className="text-gray-400 italic font-medium">No written comment.</span>}
+                                  </p>
+                              ) : (
+                                  <p className="text-xs font-bold text-amber-600 bg-amber-50 inline-block px-2 py-1 rounded-lg">
+                                    ⚠ Comment pending approval
+                                  </p>
+                              )}
+                            </div>
                           </div>
                       ))}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmitReview} className="rounded-3xl border border-gray-200 bg-white/80 p-4 space-y-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Leave a review</p>
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs text-gray-700 font-medium">Rating</label>
-                    <select
-                        value={rating}
-                        onChange={(e) => setRating(Number(e.target.value))}
-                        className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900"
+                {/* Review Form */}
+                <div className="bg-gray-50 p-8 rounded-[2rem] border border-gray-200">
+                  <h4 className="font-bold text-lg mb-6 text-gray-900">Leave a Review</h4>
+                  <form onSubmit={handleSubmitReview} className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</label>
+                      <select
+                          value={rating}
+                          onChange={(e) => setRating(Number(e.target.value))}
+                          className="block w-full md:w-48 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-black outline-none"
+                          disabled={!user}
+                      >
+                        {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} Stars {n===5 && "(Best)"}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</label>
+                      <textarea
+                          value={reviewText}
+                          onChange={(e) => setReviewText(e.target.value)}
+                          rows={4}
+                          placeholder="How do they fit? How's the quality?"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 focus:ring-2 focus:ring-black outline-none"
+                          disabled={!user}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                          type="checkbox"
+                          id="confirmDelivery"
+                          checked={confirmDelivery}
+                          onChange={(e) => setConfirmDelivery(e.target.checked)}
+                          disabled={!user}
+                          className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
+                      />
+                      <label htmlFor="confirmDelivery" className="text-sm font-medium text-gray-700 select-none cursor-pointer">
+                        I confirm I received this product (Required)
+                      </label>
+                    </div>
+
+                    <button
+                        type="submit"
                         disabled={!user}
+                        className="bg-black text-white px-10 py-4 rounded-full font-bold uppercase tracking-[0.2em] text-xs hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
                     >
-                      {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} Stars</option>)}
-                    </select>
-                  </div>
-                  <textarea
-                      value={reviewText}
-                      onChange={(e) => setReviewText(e.target.value)}
-                      rows={3}
-                      placeholder="Share your experience…"
-                      className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                      disabled={!user}
-                  />
-                  <label className="flex items-center gap-2 text-xs text-gray-700">
-                    <input type="checkbox" checked={confirmDelivery} onChange={(e) => setConfirmDelivery(e.target.checked)} disabled={!user} />
-                    I confirm I received this product
-                  </label>
-                  <button
-                      type="submit"
-                      disabled={!user}
-                      className="w-full rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.16em] py-2.5 disabled:opacity-50"
-                  >
-                    Submit review
-                  </button>
-                </form>
+                      {user ? "Submit Review" : "Log in to Review"}
+                    </button>
+                  </form>
+                </div>
               </div>
           )}
         </div>
