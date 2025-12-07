@@ -1,8 +1,5 @@
-// frontend/lib/api.js
-
-// Change this if your backend runs on a different URL or port
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 export async function parseJsonSafe(res) {
   const contentType = res.headers.get("content-type") || "";
@@ -76,8 +73,8 @@ async function refreshAccessToken() {
 
 
 export async function apiRequest(
-  path,
-  { method = "GET", body, headers = {}, auth = false } = {}
+    path,
+    { method = "GET", body, headers = {}, auth = false } = {}
 ) {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
 
@@ -146,7 +143,7 @@ export async function apiRequest(
       }
 
       const retryError = new Error(
-        retry.data?.message || "API request failed after refresh"
+          retry.data?.message || "API request failed after refresh"
       );
       retryError.status = retry.res.status;
       retryError.data = retry.data;
@@ -155,7 +152,7 @@ export async function apiRequest(
       // Refresh failed → clear tokens and throw
       clearStoredTokens();
       const error = new Error(
-        refreshError.message || "Failed to refresh session"
+          refreshError.message || "Failed to refresh session"
       );
       error.status = 401;
       throw error;
@@ -209,7 +206,8 @@ export async function getProductsApi() {
   });
 }
 
-export async function getProductByIdApi(id) {
+// NOTE: Renamed from getProductByIdApi to getProductApi to match Page imports
+export async function getProductApi(id) {
   return apiRequest(`/products/${id}`, {
     method: "GET",
     auth: false,
@@ -254,5 +252,23 @@ export async function createOrderApi(items) {
     method: "POST",
     auth: true,
     body: { items },
+  });
+}
+
+// --- REVIEWS (ADDED) ---
+
+export async function getProductReviewsApi(id) {
+  return apiRequest(`/products/${id}/reviews`, {
+    method: "GET",
+    auth: false,
+  });
+}
+
+export async function addProductReviewApi(id, data) {
+  // data: { rating, comment }
+  return apiRequest(`/products/${id}/reviews`, {
+    method: "POST",
+    body: data,
+    auth: true,
   });
 }
