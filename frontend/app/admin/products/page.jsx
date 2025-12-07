@@ -5,7 +5,6 @@ import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
 import ActionButton from "../../../components/ActionButton";
 import StockBadge from "../../../components/StockBadge";
-// REMOVED: import { getAllReviews, updateReviewStatus } from "../../../lib/reviews";
 import { useAuth } from "../../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -82,7 +81,6 @@ export default function AdminProductsPage() {
         }
 
         // 2. Fetch Pending Reviews (Real API)
-        // Ensure you added the router.get('/pending'...) route to backend!
         const revRes = await fetch(`${apiBase}/reviews/pending`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -124,9 +122,14 @@ export default function AdminProductsPage() {
     const priceNumber = Number(newPrice);
     const stockNumber = Number(newStock);
 
-    // ... validation ...
-    if (Number.isNaN(priceNumber) || priceNumber < 0) return;
-    if (!Number.isInteger(stockNumber) || stockNumber < 0) return;
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      setMessage("Price must be a valid number");
+      return;
+    }
+    if (!Number.isInteger(stockNumber) || stockNumber < 0) {
+      setMessage("Stock must be a valid integer");
+      return;
+    }
 
     setCreating(true);
     setMessage("");
@@ -188,7 +191,6 @@ export default function AdminProductsPage() {
   }
 
   async function uploadProductImage(productId, file, tokenFromCaller) {
-    // ... (This function remains exactly the same as your code) ...
     const token = tokenFromCaller;
     const formData = new FormData();
     formData.append("image", file);
@@ -213,7 +215,6 @@ export default function AdminProductsPage() {
   // ---------- REVIEW ACTIONS (REAL API) ----------
 
   async function handleReviewAction(id, action) {
-    // action is 'approved' or 'rejected'
     const token = localStorage.getItem("token");
     if (!token) return;
 
@@ -224,7 +225,6 @@ export default function AdminProductsPage() {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
-          // Remove from local list
           setPendingReviews(prev => prev.filter(r => r.id !== id));
           setMessage("Review approved!");
         } else {
@@ -232,11 +232,8 @@ export default function AdminProductsPage() {
         }
       }
       else if (action === 'rejected') {
-        // Note: You need a DELETE or REJECT route in backend.
-        // For now, let's assume you implemented DELETE /reviews/:id
-        // If not, this part won't work yet.
         const res = await fetch(`${apiBase}/reviews/${id}`, {
-          method: "DELETE", // Or whatever your reject logic is
+          method: "DELETE",
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -249,7 +246,7 @@ export default function AdminProductsPage() {
     }
   }
 
-  // ---------- EDIT PRODUCT (Same as before) ----------
+  // ---------- EDIT PRODUCT ----------
   function startEdit(p) {
     setEditingId(p.id);
     setEditName(p.name || "");
@@ -267,7 +264,6 @@ export default function AdminProductsPage() {
   }
 
   async function handleSaveEdit(productId) {
-    // ... (This logic remains the same, just keeping it brief for the copy-paste)
     if (!ensureAdmin()) return;
     const token = localStorage.getItem("token");
     setSavingEdit(true);
@@ -290,7 +286,7 @@ export default function AdminProductsPage() {
     finally { setSavingEdit(false); }
   }
 
-  // ---------- DELETE PRODUCT (Same as before) ----------
+  // ---------- DELETE PRODUCT ----------
   async function handleDelete(productId) {
     if (!ensureAdmin()) return;
     if (!confirm("Delete this product?")) return;
@@ -310,7 +306,6 @@ export default function AdminProductsPage() {
   }
 
   // ---------- UI RENDER ----------
-  // (Standard UI rendering, same as your file but using the real data)
 
   if (loadingUser) return <SiteLayout><p>Checking...</p></SiteLayout>;
   if (!user || user.roleId !== 1) return <SiteLayout><p>Access Denied</p></SiteLayout>;
@@ -381,16 +376,19 @@ export default function AdminProductsPage() {
                           >
                             Approve
                           </ActionButton>
-                          {/* Add reject button logic later if needed */}
+                          <ActionButton
+                              size="xs"
+                              variant="outline"
+                              onClick={() => handleReviewAction(rev.id, "rejected")}
+                          >
+                            Reject
+                          </ActionButton>
                         </div>
                       </div>
                   ))}
                 </div>
             )}
           </div>
-
-          {/* ... (The Rest of your Product Creation Form UI goes here) ... */}
-          {/* I am truncating the create/edit UI to save space, but you keep it exactly as it was! */}
 
           {/* Message */}
           {message && (
@@ -404,7 +402,21 @@ export default function AdminProductsPage() {
               onSubmit={handleCreateProduct}
               className="rounded-3xl border border-gray-200 bg-white/95 shadow-sm shadow-black/5 px-4 py-4 sm:px-6 sm:py-6 space-y-5"
           >
-            {/* ... (Your Form Inputs here) ... */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                  New drop
+                </p>
+                <p className="text-xs text-gray-500">
+                  Add a new pair to the SNEAKS-UP catalog. Image is optional but
+                  highly recommended.
+                </p>
+              </div>
+              <span className="text-[11px] text-gray-400">
+              Fields marked * are required
+            </span>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-4">
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
@@ -455,26 +467,308 @@ export default function AdminProductsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 mt-4">
-              <ActionButton type="submit" disabled={creating} size="xs" variant="info">
+
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)]">
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                  Description
+                </label>
+                <textarea
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15 resize-none"
+                    placeholder="Story the drop — colorway, fit, materials, and why it hits different."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                  Product image
+                </label>
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50/80 px-3 py-3 flex flex-col gap-2 justify-between h-full">
+                  <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) =>
+                          setNewImageFile(e.target.files?.[0] || null)
+                      }
+                      className="text-[11px] text-gray-700 file:text-[11px] file:px-3 file:py-1.5 file:rounded-full file:border file:border-gray-300 file:bg-white file:text-gray-800 file:mr-3 file:hover:bg-gray-100"
+                  />
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    Optional. JPEG/PNG recommended. You can also upload or change
+                    imagery later from the product list.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <ActionButton
+                  type="submit"
+                  disabled={creating}
+                  size="xs"
+                  variant="info"
+                  className="gap-2 px-4 shadow-sm"
+              >
                 {creating ? "Creating…" : "Create drop"}
               </ActionButton>
             </div>
           </form>
 
-          {/* Existing Products List (Keep your existing map logic here) */}
+          {/* Existing Products List */}
           <div className="space-y-3">
-            {products.map(p => (
-                <div key={p.id} className="rounded-3xl border border-gray-200 bg-white p-4">
-                  <div className="flex justify-between">
-                    <span className="font-bold">{p.name}</span>
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(p)} className="text-xs border px-2 py-1 rounded">Edit</button>
-                      <button onClick={() => handleDelete(p.id)} className="text-xs bg-red-600 text-white px-2 py-1 rounded">Delete</button>
-                    </div>
-                  </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-900">
+                Catalog ({products.length})
+              </p>
+              <p className="text-[11px] text-gray-500">
+                Click a card to update copy, price, stock, or imagery.
+              </p>
+            </div>
+
+            {loading ? (
+                <p className="text-sm text-gray-500">Loading products…</p>
+            ) : products.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No products yet. Start by creating your first drop above.
+                </p>
+            ) : (
+                <div className="space-y-3">
+                  {products.map((p) => {
+                    const isEditing = editingId === p.id;
+                    const priceNumber = Number(p.price || 0);
+                    const imageUrl = p.imageUrl
+                        ? `${apiBase}${p.imageUrl}`
+                        : null;
+
+                    const activeLabel = p.isActive === false ? "Inactive" : "Active";
+                    const activeClasses =
+                        p.isActive === false
+                            ? "bg-gray-200 text-gray-700"
+                            : "bg-emerald-100 text-emerald-700";
+
+                    return (
+                        <div
+                            key={p.id}
+                            className="rounded-3xl border border-gray-200 bg-white/95 px-4 py-4 sm:px-5 sm:py-5 shadow-sm shadow-black/5"
+                        >
+                          <div className="flex flex-col md:flex-row gap-4">
+                            {/* Image preview + upload */}
+                            <div className="flex flex-col items-center gap-2 md:w-40">
+                              <div className="w-32 h-32 rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center shadow-sm">
+                                {imageUrl ? (
+                                    <img
+                                        src={imageUrl}
+                                        alt={p.name || "Drop image"}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 text-center px-2">
+                              No image yet
+                            </span>
+                                )}
+                              </div>
+                              <button
+                                  type="button"
+                                  disabled={imageUploadingId === p.id}
+                                  className="relative overflow-hidden rounded-full border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <label className="cursor-pointer">
+                            <span>
+                              {imageUploadingId === p.id
+                                  ? "Uploading…"
+                                  : imageUrl
+                                      ? "Replace image"
+                                      : "Upload image"}
+                            </span>
+                                  <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0] || null;
+                                        if (!file) return;
+                                        try {
+                                          await uploadProductImage(p.id, file);
+                                        } catch (err) {
+                                          console.error(
+                                              "Inline image upload error:",
+                                              err
+                                          );
+                                        }
+                                      }}
+                                  />
+                                </label>
+                              </button>
+                              <span
+                                  className={`mt-1 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${activeClasses}`}
+                              >
+                          {activeLabel}
+                        </span>
+                            </div>
+
+                            {/* Text & controls */}
+                            <div className="flex-1 space-y-3">
+                              {/* Top row: name + price + stock */}
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  {isEditing ? (
+                                      <input
+                                          type="text"
+                                          value={editName}
+                                          onChange={(e) =>
+                                              setEditName(e.target.value)
+                                          }
+                                          className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                                      />
+                                  ) : (
+                                      <h2 className="text-sm sm:text-base font-semibold text-gray-900">
+                                        {p.name}
+                                      </h2>
+                                  )}
+                                  <p className="text-[11px] text-gray-500">
+                                    ID: {p.id}
+                                  </p>
+                                </div>
+                                <div className="text-right space-y-1">
+                                  <div>
+                                <span className="text-xs font-semibold text-gray-900">
+                                  $
+                                  {isEditing
+                                      ? Number(editPrice || 0).toFixed(2)
+                                      : priceNumber.toFixed(2)}
+                                </span>
+                                  </div>
+                                  <div className="flex justify-end">
+                                    {isEditing ? (
+                                        <span className="text-[11px] text-gray-700 font-medium">
+                                    In stock: {editStock}
+                                  </span>
+                                    ) : (
+                                        <StockBadge
+                                            stock={p.stock}
+                                            tone="muted"
+                                            className="text-[10px] px-2.5 py-1"
+                                        />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Description + editable price/stock fields when editing */}
+                              <div className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                                <div className="space-y-1">
+                                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                                    Description
+                                  </p>
+                                  {isEditing ? (
+                                      <textarea
+                                          value={editDescription}
+                                          onChange={(e) =>
+                                              setEditDescription(e.target.value)
+                                          }
+                                          rows={2}
+                                          className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15 resize-none"
+                                      />
+                                  ) : (
+                                      <p className="text-xs text-gray-600 leading-relaxed">
+                                        {p.description || (
+                                            <span className="italic text-gray-400">
+                                    No description set.
+                                  </span>
+                                        )}
+                                      </p>
+                                  )}
+                                </div>
+
+                                {isEditing && (
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <div className="space-y-1">
+                                        <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                                          Price
+                                        </p>
+                                        <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                                    $
+                                  </span>
+                                          <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              value={editPrice}
+                                              onChange={(e) =>
+                                                  setEditPrice(e.target.value)
+                                              }
+                                              className="w-full rounded-full border border-gray-300 bg-white pl-6 pr-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="space-y-1">
+                                        <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                                          Stock
+                                        </p>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={editStock}
+                                            onChange={(e) =>
+                                                setEditStock(e.target.value)
+                                            }
+                                            className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                                        />
+                                      </div>
+                                    </div>
+                                )}
+                              </div>
+
+                              {/* Edit / delete controls */}
+                              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                                {isEditing ? (
+                                    <>
+                                      <button
+                                          type="button"
+                                          onClick={() => handleSaveEdit(p.id)}
+                                          disabled={savingEdit}
+                                          className="px-3.5 py-1.75 rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {savingEdit ? "Saving…" : "Save"}
+                                      </button>
+                                      <button
+                                          type="button"
+                                          onClick={cancelEdit}
+                                          className="px-3.5 py-1.75 rounded-full border border-gray-300 bg-white text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                ) : (
+                                    <>
+                                      <button
+                                          type="button"
+                                          onClick={() => startEdit(p)}
+                                          className="px-3.5 py-1.75 rounded-full border border-gray-300 bg-white text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                          type="button"
+                                          onClick={() => handleDelete(p.id)}
+                                          disabled={deletingId === p.id}
+                                          className="px-3.5 py-1.75 rounded-full bg-red-600 text-white text-[11px] font-semibold uppercase tracking-[0.18em] hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {deletingId === p.id ? "Deleting…" : "Delete"}
+                                      </button>
+                                    </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                    );
+                  })}
                 </div>
-            ))}
+            )}
           </div>
 
         </div>
