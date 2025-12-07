@@ -54,7 +54,7 @@ export default function ProductDetailPage() {
     loadProduct();
   }, [apiBase, productId]);
 
-  // 2. LOAD REVIEWS (FROM REAL API NOW!)
+  // 2. LOAD REVIEWS
   useEffect(() => {
     if (!productId) return;
 
@@ -63,7 +63,6 @@ export default function ProductDetailPage() {
         const res = await fetch(`${apiBase}/reviews/product/${productId}`);
         if (res.ok) {
           const data = await res.json();
-          // Backend returns the list, we just save it
           setReviews(Array.isArray(data) ? data : []);
         }
       } catch (err) {
@@ -81,14 +80,14 @@ export default function ProductDetailPage() {
     }
   }
 
-  // 3. ADD TO CART (With Guest Logic)
+  // 3. ADD TO CART
   async function handleAddToCart() {
     setMessage("");
     setMessageType("info");
 
     if (!product) return;
 
-    // --- GUEST LOGIC ---
+    // GUEST LOGIC
     if (!user) {
       try {
         const guestCart = JSON.parse(localStorage.getItem("guestCart") || "[]");
@@ -119,7 +118,7 @@ export default function ProductDetailPage() {
       return;
     }
 
-    // --- LOGGED IN LOGIC ---
+    // LOGGED IN LOGIC
     setSubmitting(true);
     try {
       await addToCartApi({
@@ -143,7 +142,7 @@ export default function ProductDetailPage() {
     }
   }
 
-  // 4. SUBMIT REVIEW (To Real API)
+  // 4. SUBMIT REVIEW
   async function handleSubmitReview(e) {
     e.preventDefault();
     if (!user) return setMessage("Please log in.");
@@ -173,7 +172,6 @@ export default function ProductDetailPage() {
         setMessage(data.message || "Failed to submit review.");
         setMessageType("error");
       } else {
-        // Success! Add to list locally so we see it immediately
         const newReview = {
           id: Date.now(),
           userName: user.fullName || user.email || "Me",
@@ -202,7 +200,8 @@ export default function ProductDetailPage() {
   return (
       <SiteLayout>
         <div className="space-y-10 pb-20">
-          {/* Breadcrumb + back link */}
+
+          {/* HEADER: Breadcrumb + Styled 'GO BACK' Button */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
               <Link href="/" className="hover:text-black hover:underline underline-offset-4">Home</Link>
@@ -211,7 +210,14 @@ export default function ProductDetailPage() {
               <span>/</span>
               <span className="text-black font-bold">{product ? product.name : "Pair"}</span>
             </div>
-            <button onClick={() => router.back()} className="text-xs font-bold text-gray-600 underline underline-offset-4 hover:text-black">Go Back</button>
+
+            {/* UPDATED BUTTON: VISUALLY like Cart, FUNCTIONALLY goes back */}
+            <button
+                onClick={() => router.back()}
+                className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all active:scale-[0.97]"
+            >
+              Go Back
+            </button>
           </div>
 
           {loadingProduct ? (
@@ -243,7 +249,7 @@ export default function ProductDetailPage() {
                     <StockBadge stock={product.stock} />
                   </div>
 
-                  {/* --- NEW SPECIFICATIONS / WARRANTY BOX --- */}
+                  {/* SPECIFICATIONS */}
                   <div className="grid grid-cols-2 gap-4 rounded-2xl bg-gray-50 p-5 border border-gray-100">
                     <div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Model</p>
@@ -331,13 +337,11 @@ export default function ProductDetailPage() {
                                   {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : "Just now"}
                                 </p>
                               </div>
-                              {/* BIG YELLOW STARS */}
                               <div className="text-yellow-400 text-lg tracking-widest">
                                 {"★".repeat(Math.max(1, Math.min(5, rev.rating || 1))).padEnd(5, "☆")}
                               </div>
                             </div>
 
-                            {/* --- COMMENT LOGIC --- */}
                             <div className="mt-3 pt-3 border-t border-gray-100">
                               {rev.status === 'approved' || rev.comment ? (
                                   <p className="text-sm text-gray-700 leading-relaxed">
@@ -354,7 +358,6 @@ export default function ProductDetailPage() {
                     </div>
                 )}
 
-                {/* Review Form */}
                 <div className="bg-gray-50 p-8 rounded-[2rem] border border-gray-200">
                   <h4 className="font-bold text-lg mb-6 text-gray-900">Leave a Review</h4>
                   <form onSubmit={handleSubmitReview} className="space-y-5">
