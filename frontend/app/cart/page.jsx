@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
-// Note: MockPaymentModal import removed since we are doing it inline now.
 import {
   getCartApi,
   getProductsApi,
@@ -28,9 +27,10 @@ export default function CartPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [lastOrderId, setLastOrderId] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [finalTotal, setFinalTotal] = useState(0);
 
-  // --- PAYMENT FORM STATES (New) ---
-  const [showPaymentForm, setShowPaymentForm] = useState(false); // Controls the dropdown
+  // --- PAYMENT FORM STATES ---
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [cardName, setCardName] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [paymentError, setPaymentError] = useState("");
@@ -105,7 +105,7 @@ export default function CartPage() {
     }, 0);
   }, [enrichedItems]);
 
-  // --- CART ACTIONS ---
+  // --- ACTIONS ---
   async function handleUpdateQuantity(productId, newQty) {
     if (newQty <= 0) return handleRemove(productId);
     if (!user) {
@@ -156,49 +156,33 @@ export default function CartPage() {
     }
   }
 
-  // --- PAYMENT INPUT HANDLERS (Inline Logic) ---
-
+  // --- PAYMENT INPUT HANDLERS ---
   const handleNameChange = (e) => {
-    const val = e.target.value;
-    // Regex: Letters and spaces only
-    if (/^[a-zA-Z\s]*$/.test(val)) {
-      setCardName(val);
-    }
+    if (/^[a-zA-Z\s]*$/.test(e.target.value)) setCardName(e.target.value);
   };
 
   const handleCardNumberChange = (e) => {
-    const val = e.target.value;
-    // Regex: Integers only
-    if (/^\d*$/.test(val)) {
-      setCardNumber(val);
-    }
+    if (/^\d*$/.test(e.target.value)) setCardNumber(e.target.value);
   };
 
-  // --- CHECKOUT & ORDER LOGIC ---
-
-  // 1. Opens the inline form
   function handleCheckoutClick() {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-    if (enrichedItems.length === 0) {
-      setMessage("Your bag is empty.");
-      return;
-    }
-    setShowPaymentForm(true); // Dropdown opens
+    if (!user) { router.push("/login"); return; }
+    if (enrichedItems.length === 0) { setMessage("Your bag is empty."); return; }
+    setShowPaymentForm(true);
   }
 
-  // 2. Finalizes the order (triggered by "Pay Now")
+  // --- FINALIZE ORDER & SHOW INVOICE ---
   async function finalizeOrder() {
-    // Validation
     if (!cardName || cardNumber.length < 12) {
       setPaymentError("Please enter a valid Name and Card Number.");
       return;
     }
-    setPaymentError(""); // Clear error
+    setPaymentError("");
     setPlacingOrder(true);
     setMessage("");
+
+    // Save total for invoice before clearing cart
+    setFinalTotal(cartTotal);
 
     try {
       const itemsPayload = enrichedItems.map((ci) => ({
@@ -206,17 +190,16 @@ export default function CartPage() {
         quantity: ci.quantity,
       }));
 
-      // Call Backend API
+      // 1. API Call
       const data = await createOrderApi(itemsPayload);
-      const orderId = data?.orderId || null;
+      const orderId = data?.orderId || Math.floor(Math.random() * 100000); // Fallback ID if mock API
       setLastOrderId(orderId);
 
-      // Clear Cart and Form
+      // 2. Clear Data
       setCartItems([]);
-      setCardName("");
-      setCardNumber("");
+      setShowPaymentForm(false);
 
-      // Show Invoice Screen
+      // 3. Show Invoice Immediately
       setShowInvoice(true);
 
     } catch (err) {
@@ -229,49 +212,69 @@ export default function CartPage() {
   // --- RENDER ---
 
   if (loading) {
-    return (
-        <SiteLayout>
-          <div className="space-y-5"><p>Loading bag...</p></div>
-        </SiteLayout>
-    );
+    return <SiteLayout><div className="space-y-5"><p>Loading bag...</p></div></SiteLayout>;
   }
 
-  // SUCCESS / INVOICE SCREEN
+  // === INVOICE SCREEN (The "Pop up") ===
   if (showInvoice) {
     return (
         <SiteLayout>
-          <div className="max-w-2xl mx-auto mt-10 p-8 border border-green-200 rounded-3xl bg-green-50 text-center">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <span className="text-2xl">✅</span>
-            </div>
-            <h2 className="text-3xl font-bold text-green-800 mb-2">Order Confirmed!</h2>
-            <p className="text-green-700 mb-6">
-              Thank you for your purchase. Your payment was successful.
-            </p>
+          <div className="flex justify-center items-center min-h-[60vh]">
+            {/* Paper Style Invoice Container */}
+            <div className="bg-white w-full max-w-2xl p-10 rounded-xl shadow-2xl border border-gray-200">
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm text-left mb-8">
-              <h3 className="text-lg font-bold border-b pb-2 mb-4">Invoice Details</h3>
-              <p className="text-sm text-gray-600">Order ID: <span className="font-mono text-black">#{lastOrderId || "12345"}</span></p>
-              <p className="text-sm text-gray-600">Status: <span className="font-bold text-green-600">Paid & Processing</span></p>
-              <p className="text-sm text-gray-600 mt-2">A copy of this invoice has been sent to your email.</p>
-            </div>
+              {/* Success Header */}
+              <div className="text-center mb-8 border-b pb-6">
+                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-3xl">✅</span>
+                </div>
+                <h2 className="text-3xl font-extrabold text-black tracking-tight">PAYMENT SUCCESSFUL</h2>
+                <p className="text-gray-500 mt-2 font-medium">Thank you for your purchase!</p>
+              </div>
 
-            <button
-                onClick={() => window.location.reload()}
-                className="px-6 py-3 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900"
-            >
-              Continue Shopping
-            </button>
+              {/* Invoice Details Grid */}
+              <div className="grid grid-cols-2 gap-8 mb-8">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Billed To</p>
+                  <p className="text-lg font-bold text-black">{cardName || "Valued Customer"}</p>
+                  <p className="text-sm text-black font-medium">{user?.email || "user@example.com"}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Invoice Info</p>
+                  <p className="text-sm font-bold text-black">Order #: <span className="font-mono">{lastOrderId}</span></p>
+                  <p className="text-sm font-bold text-black">Date: {new Date().toLocaleDateString()}</p>
+                  <p className="text-sm font-bold text-green-600 mt-1">STATUS: PAID</p>
+                </div>
+              </div>
+
+              {/* Total Amount Box */}
+              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mb-8 flex justify-between items-center">
+                <span className="text-lg font-bold text-black">TOTAL AMOUNT PAID</span>
+                <span className="text-3xl font-extrabold text-black">${finalTotal.toFixed(2)}</span>
+              </div>
+
+              <div className="text-center">
+                <p className="text-sm text-gray-500 mb-6 font-medium">
+                  A printable copy of this invoice has been sent to your email address.
+                </p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="bg-black text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg"
+                >
+                  Continue Shopping
+                </button>
+              </div>
+
+            </div>
           </div>
         </SiteLayout>
     );
   }
 
-  // MAIN CART UI
+  // === MAIN CART UI ===
   return (
       <SiteLayout>
         <div className="space-y-6">
-          {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">Sneaks-up</p>
@@ -294,16 +297,13 @@ export default function CartPage() {
           {enrichedItems.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">Your cart is empty.</p>
-                <Link
-                    href="/products"
-                    className="inline-flex px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900"
-                >
+                <Link href="/products" className="inline-flex px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900">
                   Browse drops
                 </Link>
               </div>
           ) : (
               <div className="flex flex-col md:flex-row gap-8">
-                {/* --- LEFT SIDE: CART ITEMS --- */}
+                {/* ITEMS */}
                 <div className="w-full md:w-2/3 space-y-3">
                   {enrichedItems.map((ci) => {
                     const p = ci.product;
@@ -342,7 +342,7 @@ export default function CartPage() {
                   })}
                 </div>
 
-                {/* --- RIGHT SIDE: SUMMARY & CHECKOUT --- */}
+                {/* SUMMARY & CHECKOUT FORM */}
                 <div className="w-full md:w-1/3 h-fit">
                   <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
                     <h3 className="text-lg font-bold mb-4 text-gray-900">Order Summary</h3>
@@ -355,69 +355,45 @@ export default function CartPage() {
                       <span>${cartTotal.toFixed(2)}</span>
                     </div>
 
-                    {/* --- DROPDOWN PAYMENT FORM --- */}
+                    {/* PAYMENT FORM DROPDOWN */}
                     {showPaymentForm ? (
                         <div className="animate-fade-in space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                          <h4 className="font-bold text-sm text-gray-800">🏦 Payment Details</h4>
+                          <h4 className="font-bold text-sm text-gray-900">🏦 Payment Details</h4>
 
-                          {/* Name Input */}
                           <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1">Card Holder Name</label>
-                            <input
-                                type="text"
-                                value={cardName}
-                                onChange={handleNameChange}
-                                placeholder="e.g. John Doe"
-                                className="w-full p-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+                            <label className="block text-xs font-bold text-black mb-1">Card Holder Name</label>
+                            <input type="text" value={cardName} onChange={handleNameChange} placeholder="e.g. John Doe"
+                                   className="w-full p-2 border border-gray-300 rounded-lg text-sm text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black font-medium"
                             />
                             <p className="text-[10px] text-gray-500 mt-1">Letters only</p>
                           </div>
 
-                          {/* Card Input */}
                           <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1">Card Number</label>
-                            <input
-                                type="text"
-                                value={cardNumber}
-                                onChange={handleCardNumberChange}
-                                placeholder="0000 0000 0000 0000"
-                                maxLength={16}
-                                className="w-full p-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+                            <label className="block text-xs font-bold text-black mb-1">Card Number</label>
+                            <input type="text" value={cardNumber} onChange={handleCardNumberChange} placeholder="0000 0000 0000 0000" maxLength={16}
+                                   className="w-full p-2 border border-gray-300 rounded-lg text-sm text-black placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black font-medium"
                             />
                             <p className="text-[10px] text-gray-500 mt-1">Integers only</p>
                           </div>
 
-                          {/* Error Message */}
-                          {paymentError && (
-                              <p className="text-red-600 text-xs font-medium bg-red-50 p-2 rounded">
-                                {paymentError}
-                              </p>
-                          )}
+                          {paymentError && <p className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded border border-red-100">{paymentError}</p>}
 
-                          {/* Action Buttons */}
                           <div className="flex flex-col gap-2 pt-2">
-                            <button
-                                onClick={finalizeOrder}
-                                disabled={placingOrder}
-                                className="w-full py-2.5 rounded-full bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition-colors disabled:bg-gray-400"
+                            <button onClick={finalizeOrder} disabled={placingOrder}
+                                    className="w-full py-3 rounded-full bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition-colors disabled:bg-gray-400 shadow-md"
                             >
-                              {placingOrder ? "Processing..." : "Pay Now"}
+                              {placingOrder ? "Processing..." : "Pay Now & Get Invoice"}
                             </button>
-                            <button
-                                onClick={() => setShowPaymentForm(false)}
-                                className="w-full py-2.5 rounded-full bg-white border border-gray-300 text-gray-700 text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors"
+                            <button onClick={() => setShowPaymentForm(false)}
+                                    className="w-full py-2.5 rounded-full bg-white border border-gray-300 text-black text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-colors"
                             >
                               Cancel
                             </button>
                           </div>
                         </div>
                     ) : (
-                        /* --- DEFAULT BUTTON --- */
-                        <button
-                            type="button"
-                            onClick={handleCheckoutClick}
-                            disabled={placingOrder}
-                            className="w-full py-3 rounded-full bg-black text-white text-xs font-bold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all active:scale-[0.97] disabled:bg-gray-400 shadow-lg shadow-gray-200"
+                        <button type="button" onClick={handleCheckoutClick} disabled={placingOrder}
+                                className="w-full py-3 rounded-full bg-black text-white text-xs font-bold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all active:scale-[0.97] disabled:bg-gray-400 shadow-lg shadow-gray-200"
                         >
                           {user ? "Proceed to Checkout" : "Log in to Checkout"}
                         </button>
