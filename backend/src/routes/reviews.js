@@ -2,31 +2,66 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
-// Import your tables (Make sure 'reviews' is in your schema.js export!)
-const { reviews, orders, orderItems } = require('../db/schema');
+// Import your tables
+const { reviews, orders, orderItems, users } = require('../db/schema');
 const { eq, and, desc, inArray } = require('drizzle-orm');
-// FIX: Using the correct names from your auth.js file
+// Import auth middleware
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
-// 1. GET REVIEWS (Public)
-// Returns all ratings, but hides comment text if not approved
+// =========================================================
+// 1. SPECIFIC ROUTES (MUST BE FIRST)
+// =========================================================
+
+// GET ALL PENDING REVIEWS (Admin Only)
+// This MUST come before '/product/:productId' or else "pending"
+// will be treated as a product ID!
+router.get('/pending', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const pendingReviews = await db
+            .select()
+            .from(reviews)
+            .where(eq(reviews.status, 'pending'));
+
+        res.json(pendingReviews);
+    } catch (err) {
+        console.error("Error fetching pending reviews:", err);
+        res.status(500).json({ message: "Failed to load pending reviews" });
+    }
+});
+
+// =========================================================
+// 2. DYNAMIC ROUTES
+// =========================================================
+
+// GET REVIEWS FOR A PRODUCT (Public)
+// GET REVIEWS FOR A PRODUCT (Public)
+// GET REVIEWS FOR A PRODUCT (Public)
 router.get('/product/:productId', async (req, res) => {
     try {
         const { productId } = req.params;
 
-        // Fetch all reviews for this product
-        const allReviews = await db
-            .select()
+        const result = await db
+            .select({
+                id: reviews.id,
+                userId: reviews.userId,
+                rating: reviews.rating,
+                comment: reviews.comment,
+                status: reviews.status,
+                createdAt: reviews.createdAt,
+                // CHANGED: Get 'fullName' instead of 'email'
+                userName: users.fullName
+            })
             .from(reviews)
+            .leftJoin(users, eq(reviews.userId, users.id))
             .where(eq(reviews.productId, productId))
             .orderBy(desc(reviews.createdAt));
 
-        // Process them for the frontend
-        const cleanReviews = allReviews.map(r => ({
+        const cleanReviews = result.map(r => ({
             id: r.id,
             userId: r.userId,
-            rating: r.rating, // Rating is ALWAYS visible
-            // Only show text if approved. If pending/rejected, send null.
+            // CHANGED: Return 'userName' to frontend
+            userName: r.userName || "Anonymous",
+            rating: r.rating,
             comment: r.status === 'approved' ? r.comment : null,
             status: r.status,
             createdAt: r.createdAt
@@ -39,7 +74,7 @@ router.get('/product/:productId', async (req, res) => {
     }
 });
 
-// 2. POST REVIEW (Protected)
+// POST REVIEW (Protected)
 router.post('/', authMiddleware, async (req, res) => {
     const { productId, rating, comment } = req.body;
     const userId = req.user.id;
@@ -49,7 +84,7 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     try {
-        // --- DELIVERY CHECK (Fixed Version) ---
+        // --- DELIVERY CHECK ---
 
         // 1. Find all DELIVERED orders for this user
         const userOrders = await db
@@ -66,7 +101,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
         const orderIds = userOrders.map(o => o.id);
 
-        // 2. Check if product is in those orders (USING db.select INSTEAD OF db.query)
+        // 2. Check if product is in those orders
         const validItems = await db
             .select()
             .from(orderItems)
@@ -97,13 +132,11 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
-// 3. APPROVE REVIEW (Manager/Admin Only)
-// PUT /api/reviews/123/approve
+// APPROVE REVIEW (Manager/Admin Only)
 router.put('/:id/approve', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Update the status to 'approved' so the comment becomes visible
         await db.update(reviews)
             .set({ status: 'approved' })
             .where(eq(reviews.id, id));
@@ -112,6 +145,21 @@ router.put('/:id/approve', authMiddleware, requireAdmin, async (req, res) => {
     } catch (err) {
         console.error("Approval error:", err);
         res.status(500).json({ message: "Failed to approve review." });
+    }
+});
+
+// REJECT/DELETE REVIEW (Manager/Admin Only)
+// Needed for the "Reject" button
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await db.delete(reviews).where(eq(reviews.id, id));
+
+        res.json({ message: "Review deleted successfully." });
+    } catch (err) {
+        console.error("Delete error:", err);
+        res.status(500).json({ message: "Failed to delete review." });
     }
 });
 
