@@ -81,6 +81,36 @@ const cartItems = pgTable("cart_items", {
   quantity: integer("quantity").notNull().default(1)
 });
 
+// Reviews (Ratings & Comments)
+const reviews = pgTable("reviews", {
+  id: serial("id").primaryKey(),
+
+  // Link to the User who wrote it
+  userId: integer("user_id")
+      .notNull()
+      .references(() => users.id),
+
+  // Link to the Product being reviewed
+  productId: integer("product_id")
+      .notNull()
+      .references(() => products.id),
+
+  // The Rating (1-5)
+  rating: integer("rating").notNull(),
+
+  // The Comment (Text)
+  comment: text("comment"),
+
+  // Approval Status (For the Manager check)
+  // 'pending' = submitted but hidden text
+  // 'approved' = visible to everyone
+  // 'rejected' = hidden forever
+  status: text("status").notNull().default("pending"),
+
+  createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+});
 
 module.exports = {
   roles,
@@ -88,6 +118,7 @@ module.exports = {
   products,
   orders,
   orderItems,
-  cartItems
+  cartItems,
+  reviews
 };
 
