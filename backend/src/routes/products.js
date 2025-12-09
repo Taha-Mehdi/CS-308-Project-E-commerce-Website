@@ -10,32 +10,45 @@ const fs = require("fs");
 
 const router = express.Router();
 
+function parseIsActive(raw) {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    const lower = raw.toLowerCase();
+    if (lower === "true") return true;
+    if (lower === "false") return false;
+  }
+  return undefined;
+}
 
- //Zod schema for product creation / update
- 
 const productBodySchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  description: z.string().optional(),
-  price: z.number().nonnegative("Price must be >= 0"),
-  stock: z.number().int().nonnegative("Stock must be >= 0"),
+  name: z.string().min(1, "Product name is required"),
+
+  // Required fields.
+  model: z.string().min(1, "Model is required"),
+  serialNumber: z.string().min(1, "Serial number is required"),
+  description: z.string().min(1, "Description is required"),
+  stock: z.number().int().nonnegative("Quantity in stock is required"),
+  price: z.number().nonnegative("Price is required"),
+  warrantyStatus: z.string().min(1, "Warranty status is required"),
+  distributorInfo: z.string().min(1, "Distributor information is required"),
+
+  // Optional but supported:
   isActive: z.boolean().optional().default(true),
+  categoryId: z.number().int().optional().nullable(),
+  cost: z.number().nonnegative("Cost must be >= 0").optional(),
 });
 
- //Multer config for image upload
 const uploadDir = path.join(__dirname, "..", "..", "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
+  destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${unique}${ext}`);
-  },
+    cb(null, `${unique}${path.extname(file.originalname)}`);
+  }
 });
 
 const upload = multer({ storage });
@@ -97,7 +110,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
-    return res.status(400).json({ message: "Invalid product id" });
+    return res.status(400).json({ message: "Invalid product ID" });
   }
 
   try {
@@ -106,34 +119,33 @@ router.get("/:id", async (req, res) => {
       .from(products)
       .where(eq(products.id, id));
 
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
     return res.json(product);
   } catch (err) {
     console.error("GET /products/:id error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch product" });
+    return res.status(500).json({ message: "Failed to fetch product" });
   }
 });
 
-
-//POST /products
-//Admin only – create a new product
 
 router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const parsed = productBodySchema.safeParse({
       name: req.body.name,
+      model: req.body.model,
+      serialNumber: req.body.serialNumber,
       description: req.body.description,
-      price: Number(req.body.price),
+
       stock: Number(req.body.stock),
-      isActive:
-        typeof req.body.isActive === "boolean"
-          ? req.body.isActive
-          : req.body.isActive === "true",
+      price: Number(req.body.price),
+      warrantyStatus: req.body.warrantyStatus,
+      distributorInfo: req.body.distributorInfo,
+
+      isActive: parseIsActive(req.body.isActive),
+      categoryId:
+        req.body.categoryId !== undefined ? Number(req.body.categoryId) : undefined,
+      cost: req.body.cost !== undefined ? Number(req.body.cost) : undefined,
     });
 
     if (!parsed.success) {
@@ -149,10 +161,18 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
       .insert(products)
       .values({
         name: data.name,
-        description: data.description || null,
-        price: data.price, // drizzle numeric will handle conversion
+        model: data.model,
+        serialNumber: data.serialNumber,
+        description: data.description,
+
         stock: data.stock,
+        price: data.price,
+        warrantyStatus: data.warrantyStatus,
+        distributorInfo: data.distributorInfo,
+
         isActive: data.isActive,
+        categoryId: data.categoryId ?? null,
+        cost: data.cost ?? null,
       })
       .returning();
 
@@ -163,25 +183,28 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-//PUT /products/:id
-//Admin only – update existing product
-
 router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
-    return res.status(400).json({ message: "Invalid product id" });
+    return res.status(400).json({ message: "Invalid product ID" });
   }
 
   try {
     const parsed = productBodySchema.safeParse({
       name: req.body.name,
+      model: req.body.model,
+      serialNumber: req.body.serialNumber,
       description: req.body.description,
-      price: Number(req.body.price),
+
       stock: Number(req.body.stock),
-      isActive:
-        typeof req.body.isActive === "boolean"
-          ? req.body.isActive
-          : req.body.isActive === "true",
+      price: Number(req.body.price),
+      warrantyStatus: req.body.warrantyStatus,
+      distributorInfo: req.body.distributorInfo,
+
+      isActive: parseIsActive(req.body.isActive),
+      categoryId:
+        req.body.categoryId !== undefined ? Number(req.body.categoryId) : undefined,
+      cost: req.body.cost !== undefined ? Number(req.body.cost) : undefined,
     });
 
     if (!parsed.success) {
@@ -197,10 +220,18 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
       .update(products)
       .set({
         name: data.name,
-        description: data.description || null,
-        price: data.price,
+        model: data.model,
+        serialNumber: data.serialNumber,
+        description: data.description,
+
         stock: data.stock,
+        price: data.price,
+        warrantyStatus: data.warrantyStatus,
+        distributorInfo: data.distributorInfo,
+
         isActive: data.isActive,
+        categoryId: data.categoryId ?? null,
+        cost: data.cost ?? null,
       })
       .where(eq(products.id, id))
       .returning();
@@ -216,40 +247,29 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-//DELETE /products/:id
-//Admin only – delete product
-
-router.delete(
-  "/:id",
-  authMiddleware,
-  requireAdmin,
-  async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ message: "Invalid product id" });
-    }
-
-    try {
-      const [deleted] = await db
-        .delete(products)
-        .where(eq(products.id, id))
-        .returning();
-
-      if (!deleted) {
-        return res.status(404).json({ message: "Product not found" });
-      }
-
-      return res.json({ message: "Product deleted" });
-    } catch (err) {
-      console.error("DELETE /products/:id error:", err);
-      return res.status(500).json({ message: "Failed to delete product" });
-    }
+router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ message: "Invalid product ID" });
   }
-);
 
-//POST /products/:id/image
-//Admin only – upload product image, set products.imageUrl
- 
+  try {
+    const [deleted] = await db
+      .delete(products)
+      .where(eq(products.id, id))
+      .returning();
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    return res.json({ message: "Product deleted" });
+  } catch (err) {
+    console.error("DELETE /products/:id error:", err);
+    return res.status(500).json({ message: "Failed to delete product" });
+  }
+});
+
 router.post(
   "/:id/image",
   authMiddleware,
@@ -258,13 +278,11 @@ router.post(
   async (req, res) => {
     const productId = Number(req.params.id);
     if (!Number.isInteger(productId)) {
-      return res.status(400).json({ message: "Invalid product id" });
+      return res.status(400).json({ message: "Invalid product ID" });
     }
 
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ message: "Image file is required" });
+      return res.status(400).json({ message: "Image file is required" });
     }
 
     const imageUrl = `/uploads/${req.file.filename}`;
@@ -281,14 +299,12 @@ router.post(
       }
 
       return res.json({
-        message: "Image uploaded",
+        message: "Image uploaded successfully",
         product: updated,
       });
     } catch (err) {
       console.error("Upload product image error:", err);
-      return res
-        .status(500)
-        .json({ message: "Failed to upload image" });
+      return res.status(500).json({ message: "Failed to upload image" });
     }
   }
 );

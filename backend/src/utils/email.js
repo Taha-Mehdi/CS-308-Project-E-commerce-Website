@@ -10,9 +10,6 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-/*
-  Sends invoice email with PDF buffer attached.
-*/
 async function sendInvoiceEmail(_toEmail, pdfBuffer, orderId) {
     // For the demo we always send to this address
     const targetEmail = 'csjira308@outlook.com';

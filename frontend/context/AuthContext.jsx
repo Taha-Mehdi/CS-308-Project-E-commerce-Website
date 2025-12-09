@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { clearStoredTokens } from "../lib/api";
+import { clearStoredTokens, addToCartApi } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -37,9 +37,48 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // MAIN login()
-  // Call this after a successful login/register API call
-  // e.g. const data = await loginApi(...); login(data.token, data.user);
+  // Helper: merge guest cart into server cart after login
+  async function mergeGuestCartIntoServer() {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = localStorage.getItem("guestCart");
+      if (!raw) return;
+
+      let guestCart;
+      try {
+        guestCart = JSON.parse(raw);
+      } catch {
+        guestCart = null;
+      }
+
+      if (!Array.isArray(guestCart) || guestCart.length === 0) {
+        return;
+      }
+
+      // For each guest cart item, call backend /cart/add
+      for (const item of guestCart) {
+        if (!item || typeof item.productId !== "number") continue;
+        const qty = Number(item.quantity) || 1;
+
+        try {
+          await addToCartApi({
+            productId: item.productId,
+            quantity: qty,
+          });
+        } catch (err) {
+          console.warn("Failed to sync guest cart item", item, err);
+        }
+      }
+
+      // Clear guest cart once merged
+      localStorage.removeItem("guestCart");
+      window.dispatchEvent(new Event("cart-updated"));
+    } catch (err) {
+      console.error("mergeGuestCartIntoServer error:", err);
+    }
+  }
+
   function login(newToken, newUser) {
     if (!newToken || !newUser || typeof newUser !== "object") {
       console.warn("AuthContext.login received invalid data:", {
@@ -57,6 +96,7 @@ export function AuthProvider({ children }) {
         // token is also stored by api.js, but we keep this for compatibility
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
+        mergeGuestCartIntoServer();
       }
     } catch (err) {
       console.error("AuthContext.login storage error:", err);
