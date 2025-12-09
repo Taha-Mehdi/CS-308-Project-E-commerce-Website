@@ -6,21 +6,46 @@ import SiteLayout from "../../components/SiteLayout";
 import ActionButton from "../../components/ActionButton";
 import { useAuth } from "../../context/AuthContext";
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+const apiBase =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 function statusBadgeClasses(status) {
   switch (status) {
-    case "paid":
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-    case "shipped":
+    case "processing":
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+    case "in_transit":
       return "bg-blue-50 text-blue-700 border border-blue-200";
     case "delivered":
-      return "bg-purple-50 text-purple-700 border border-purple-200";
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     case "cancelled":
       return "bg-red-50 text-red-700 border border-red-200";
+    // legacy / unknown statuses
+    case "paid":
+    case "shipped":
     case "pending":
     default:
-      return "bg-amber-50 text-amber-700 border border-amber-200";
+      return "bg-gray-50 text-gray-700 border border-gray-200";
+  }
+}
+
+function formatStatusLabel(status) {
+  switch (status) {
+    case "processing":
+      return "Processing";
+    case "in_transit":
+      return "In transit";
+    case "delivered":
+      return "Delivered";
+    case "cancelled":
+      return "Cancelled";
+    case "paid":
+      return "Paid";
+    case "shipped":
+      return "Shipped";
+    case "pending":
+      return "Pending";
+    default:
+      return status || "Unknown";
   }
 }
 
@@ -34,6 +59,8 @@ export default function OrdersPage() {
   const [message, setMessage] = useState("");
   const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
 
+  const isBrowser = typeof window !== "undefined";
+
   // Load user orders + items + products
   useEffect(() => {
     async function loadAll() {
@@ -41,10 +68,7 @@ export default function OrdersPage() {
       setMessage("");
 
       try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("token")
-            : null;
+        const token = isBrowser ? window.localStorage.getItem("token") : null;
 
         if (!token) {
           setOrders([]);
@@ -81,6 +105,7 @@ export default function OrdersPage() {
             try {
               const data = await res.json();
               if (Array.isArray(data)) {
+                // older shape, just orders
                 setOrders(data);
                 setItems([]);
               } else {
@@ -132,7 +157,7 @@ export default function OrdersPage() {
     } else if (!loadingUser) {
       setLoading(false);
     }
-  }, [apiBase, loadingUser, user]);
+  }, [loadingUser, user, isBrowser]);
 
   const productsMap = useMemo(() => {
     const m = new Map();
@@ -162,16 +187,12 @@ export default function OrdersPage() {
 
   async function handleDownloadInvoice(orderId) {
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("token")
-          : null;
+      const token = isBrowser ? window.localStorage.getItem("token") : null;
 
       if (!token) {
-        setMessage("Please login again to download invoices.");
-        if (typeof window !== "undefined") {
-          window.alert("Please login again to download invoices.");
-        }
+        const msg = "Please login again to download invoices.";
+        setMessage(msg);
+        if (isBrowser) window.alert(msg);
         return;
       }
 
@@ -198,17 +219,15 @@ export default function OrdersPage() {
         }
         console.error("Invoice download failed:", res.status);
         setMessage(msg);
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
+        if (isBrowser) window.alert(msg);
         return;
       }
 
       if (!ct.includes("application/pdf")) {
-        setMessage("Unexpected response when downloading invoice.");
-        if (typeof window !== "undefined") {
+        const msg = "Unexpected response when downloading invoice.";
+        setMessage(msg);
+        if (isBrowser)
           window.alert("Unexpected response from server for invoice.");
-        }
         return;
       }
 
@@ -226,9 +245,7 @@ export default function OrdersPage() {
       console.error("Invoice download error:", err);
       const msg = "Invoice download failed. Please try again.";
       setMessage(msg);
-      if (typeof window !== "undefined") {
-        window.alert(msg);
-      }
+      if (isBrowser) window.alert(msg);
     } finally {
       setInvoiceLoadingId(null);
     }
@@ -297,6 +314,21 @@ export default function OrdersPage() {
               </span>
               .
             </p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Status flow:{" "}
+              <span className="font-semibold text-gray-800">
+                Processing
+              </span>{" "}
+              →{" "}
+              <span className="font-semibold text-gray-800">
+                In transit
+              </span>{" "}
+              →{" "}
+              <span className="font-semibold text-gray-800">
+                Delivered
+              </span>
+              .
+            </p>
           </div>
           <Link
             href="/products"
@@ -347,7 +379,7 @@ export default function OrdersPage() {
                         <span
                           className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.16em] ${badgeClass}`}
                         >
-                          {order.status}
+                          {formatStatusLabel(order.status)}
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500">
@@ -388,16 +420,18 @@ export default function OrdersPage() {
                         const unitPrice = Number(item.unitPrice || 0);
                         const lineTotal =
                           unitPrice * (item.quantity || 0);
-                        const imageUrl = p?.imageUrl
-                          ? `${apiBase}${p.imageUrl}`
-                          : null;
+
+                        let imageUrl = p?.imageUrl || null;
+                        if (imageUrl && !imageUrl.startsWith("http")) {
+                          imageUrl = `${apiBase}${imageUrl}`;
+                        }
 
                         return (
                           <div
                             key={item.id}
                             className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5"
                           >
-                            {/* SQUARE IMAGE THUMBNAIL */}
+                            {/* Image */}
                             <div className="w-20 sm:w-24 aspect-square rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
                               {imageUrl ? (
                                 <img
