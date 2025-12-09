@@ -2,7 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { db } = require("../db");
 const { products } = require("../db/schema");
-const { eq } = require("drizzle-orm");
+const { eq, or, ilike, asc, desc } = require("drizzle-orm");
 const { authMiddleware, requireAdmin } = require("../middleware/auth");
 const multer = require("multer");
 const path = require("path");
@@ -53,9 +53,49 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+
+// GET /products
+// Public – list products with optional search + sorting
+// query params:
+//   q: search term (matches name or description, case-insensitive)
+//   sortBy: "price" | "popularity"
+//   sortOrder: "asc" | "desc"  (default: asc for price, desc for popularity)
+
 router.get("/", async (req, res) => {
+  const { q, sortBy, sortOrder } = req.query;
+
   try {
-    const all = await db.select().from(products);
+    let query = db.select().from(products);
+
+    // 🔍 search by name or description (case-insensitive)
+    if (q && q.trim() !== "") {
+      const term = `%${q.trim()}%`;
+      query = query.where(
+        or(
+          ilike(products.name, term),
+          ilike(products.description, term)
+        )
+      );
+    }
+
+    // ↕️ sorting
+    if (sortBy === "price") {
+      query = query.orderBy(
+        sortOrder === "desc" ? desc(products.price) : asc(products.price)
+      );
+    } else if (sortBy === "popularity") {
+      // assumes a "popularity" column exists on products
+      query = query.orderBy(
+        sortOrder === "asc"
+          ? asc(products.popularity)
+          : desc(products.popularity)
+      );
+    } else {
+      // stable default
+      query = query.orderBy(asc(products.id));
+    }
+
+    const all = await query;
     return res.json(all);
   } catch (err) {
     console.error("GET /products error:", err);
@@ -63,6 +103,10 @@ router.get("/", async (req, res) => {
   }
 });
 
+
+//GET /products/:id
+//Public – get single product by id
+ 
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
