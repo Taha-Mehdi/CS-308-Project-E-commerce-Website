@@ -9,7 +9,6 @@ const { buildInvoicePdf } = require('./invoice');
 
 const router = express.Router();
 
-
 // Zod schema for order creation
 const orderItemInputSchema = z.object({
   productId: z.coerce.number().int().positive(),
@@ -18,11 +17,12 @@ const orderItemInputSchema = z.object({
 
 const orderCreateSchema = z.object({
   items: z.array(orderItemInputSchema).min(1),
+  
+  shippingAddress: z.string().min(5).max(500).optional(),
 });
 
-// Allowed statuses
 const statusUpdateSchema = z.object({
-  status: z.enum(['pending', 'paid', 'shipped', 'delivered', 'cancelled']),
+  status: z.enum(['processing', 'in_transit', 'delivered', 'cancelled']),
 });
 
 // POST /orders - create a new order for the logged-in user
@@ -35,115 +35,131 @@ router.post('/', authMiddleware, async (req, res) => {
         .json({ message: 'Invalid data', errors: parsed.error.flatten() });
     }
 
-    const { items } = parsed.data;
+    const { items, shippingAddress } = parsed.data;
     const userId = req.user.id;
 
-    const productIds = [...new Set(items.map((i) => i.productId))];
+    // Wrap entire order creation + stock updates in a transaction
+    const result = await db.transaction(async (tx) => {
+      const productIds = [...new Set(items.map((i) => i.productId))];
 
-    const dbProducts = await db
-      .select()
-      .from(products)
-      .where(inArray(products.id, productIds));
+      const dbProducts = await tx
+        .select()
+        .from(products)
+        .where(inArray(products.id, productIds));
 
-    if (dbProducts.length !== productIds.length) {
-      return res
-        .status(400)
-        .json({ message: 'One or more products not found' });
-    }
-
-    const productMap = new Map();
-    dbProducts.forEach((p) => productMap.set(p.id, p));
-
-    let total = 0;
-
-    for (const item of items) {
-      const p = productMap.get(item.productId);
-      if (!p || !p.isActive) {
-        return res
-          .status(400)
-          .json({ message: `Product ${item.productId} is not available` });
+      if (dbProducts.length !== productIds.length) {
+        throw new Error('One or more products not found');
       }
 
-      if (p.stock < item.quantity) {
-        return res
-          .status(400)
-          .json({ message: `Not enough stock for product ${p.name}` });
+      const productMap = new Map();
+      dbProducts.forEach((p) => productMap.set(p.id, p));
+
+      let total = 0;
+
+      for (const item of items) {
+        const p = productMap.get(item.productId);
+        if (!p || !p.isActive) {
+          throw new Error(`Product ${item.productId} is not available`);
+        }
+
+        if (p.stock < item.quantity) {
+          throw new Error(`Not enough stock for product ${p.name}`);
+        }
+
+        const priceNumber = Number(p.price);
+        total += priceNumber * item.quantity;
       }
 
-      const priceNumber = Number(p.price);
-      total += priceNumber * item.quantity;
-    }
-
-    const insertedOrders = await db
-        .insert(orders)
-        .values({
-          userId,
-          // we treat checkout as paid since payment is mock
-          status: 'paid',
-          total: total.toFixed(2),
-        })
-        .returning();
-
-    const order = insertedOrders[0];
-
-    const orderItemsToInsert = items.map((item) => {
-      const p = productMap.get(item.productId);
-      return {
-        orderId: order.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: p.price,
-      };
-    });
-
-// save items
-    await db.insert(orderItems).values(orderItemsToInsert);
-
-// update stock
-    for (const item of items) {
-      const p = productMap.get(item.productId);
-      const newStock = p.stock - item.quantity;
-      await db
-          .update(products)
-          .set({ stock: newStock })
-          .where(eq(products.id, item.productId));
-    }
-
-// load user info for invoice
-    const userRows = await db
+      // Load user info (for shipping fallback + invoice)
+      const userRows = await tx
         .select()
         .from(users)
         .where(eq(users.id, userId));
 
-    const userInfo = userRows[0];
+      const userInfo = userRows[0];
 
-// build invoice PDF and email it
+      // Use provided shipping address or fallback to user's address (if any)
+      const finalShippingAddress =
+        shippingAddress ||
+        userInfo?.address ||
+        '';
+
+      // Requirement 3: order enters the flow as "processing"
+      const insertedOrders = await tx
+        .insert(orders)
+        .values({
+          userId,
+          status: 'processing',
+          total: total.toFixed(2),
+          shippingAddress: finalShippingAddress,
+        })
+        .returning();
+
+      const order = insertedOrders[0];
+
+      const orderItemsToInsert = items.map((item) => {
+        const p = productMap.get(item.productId);
+        return {
+          orderId: order.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: p.price,
+        };
+      });
+
+      // Save order items
+      await tx.insert(orderItems).values(orderItemsToInsert);
+
+      // Update stock for each product
+      for (const item of items) {
+        const p = productMap.get(item.productId);
+        const newStock = p.stock - item.quantity;
+        await tx
+          .update(products)
+          .set({ stock: newStock })
+          .where(eq(products.id, item.productId));
+      }
+
+      // Return data needed outside the transaction (for invoice email)
+      return { order, orderItemsToInsert, userInfo };
+    });
+
+    const { order, orderItemsToInsert, userInfo } = result;
+
+    // Build invoice PDF and email it (do NOT fail order if this breaks)
     try {
-      const pdfBuffer = await buildInvoicePdf(
-          order,
-          userInfo,
-          orderItemsToInsert
-      );
-
+      const pdfBuffer = await buildInvoicePdf(order, userInfo, orderItemsToInsert);
       await sendInvoiceEmail(userInfo.email, pdfBuffer, order.id);
     } catch (emailErr) {
       console.error('Failed to send invoice email:', emailErr);
-      // do not fail the order if email sending breaks
     }
 
     return res.status(201).json({
       message: 'Order created',
       orderId: order.id,
       total: order.total,
+      status: order.status, // "processing"
     });
-
   } catch (err) {
     console.error('Create order error:', err);
+
+    const msg = err?.message || 'Server error';
+
+    if (msg.startsWith('One or more products not found')) {
+      return res.status(400).json({ message: msg });
+    }
+    if (msg.startsWith('Product ') && msg.includes('is not available')) {
+      return res.status(400).json({ message: msg });
+    }
+    if (msg.startsWith('Not enough stock for product')) {
+      return res.status(400).json({ message: msg });
+    }
+
     return res.status(500).json({ message: 'Server error' });
   }
 });
 
-// GET /orders/my - get current user's orders
+// GET /orders/my - get current user's orders + items
 router.get('/my', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -164,6 +180,7 @@ router.get('/my', authMiddleware, async (req, res) => {
       .from(orderItems)
       .where(inArray(orderItems.orderId, orderIds));
 
+    // For the frontend "order history" page, this shape is convenient:
     return res.json({
       orders: userOrders,
       items,
@@ -174,9 +191,7 @@ router.get('/my', authMiddleware, async (req, res) => {
   }
 });
 
-// ----------------------
 // ADMIN ROUTES BELOW
-// ----------------------
 
 // GET /orders - list ALL orders (admin only)
 router.get('/', authMiddleware, requireAdmin, async (req, res) => {
