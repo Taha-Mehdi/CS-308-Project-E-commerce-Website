@@ -1,137 +1,188 @@
-const express = require('express');
-const { z } = require('zod');
-const { db } = require('../db');
-const { cartItems, products } = require('../db/schema');
-const { eq, and } = require('drizzle-orm');
-const { authMiddleware } = require('../middleware/auth');
+const express = require("express");
+const { z } = require("zod");
+const { db } = require("../db");
+const { cartItems, products } = require("../db/schema");
+const { eq, and } = require("drizzle-orm");
+const { authMiddleware } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Schema for add/update cart operations
 const addToCartSchema = z.object({
-  productId: z.number().int().positive(),
-  quantity: z.number().int().positive().default(1),
+  productId: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive().default(1),
 });
 
-// POST /cart/add
-router.post('/add', authMiddleware, async (req, res) => {
-  const parsed = addToCartSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid data" });
-  }
+router.post("/add", authMiddleware, async (req, res) => {
+  try {
+    const parsed = addToCartSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid data" });
+    }
 
-  const { productId, quantity } = parsed.data;
-  const userId = req.user.id;
+    const { productId, quantity } = parsed.data;
+    const userId = req.user.id;
 
-  // Check product exists
-  const product = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, productId));
+    // Check product exists & is active
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, productId));
 
-  if (product.length === 0) {
-    return res.status(404).json({ message: "Product not found" });
-  }
+    if (!product || product.isActive === false) {
+      return res.status(404).json({ message: "Product not found or inactive" });
+    }
 
-  // Check if already in cart
-  const existing = await db
-    .select()
-    .from(cartItems)
-    .where(
-      and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
-    );
+    if (product.stock <= 0) {
+      return res.status(400).json({ message: "Product is out of stock" });
+    }
 
-  if (existing.length > 0) {
-    // Increase quantity
-    const updated = await db
-      .update(cartItems)
-      .set({
-        quantity: existing[0].quantity + quantity
+    // Check if already in cart
+    const [existing] = await db
+      .select()
+      .from(cartItems)
+      .where(
+        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+      );
+
+    if (existing) {
+      const newQuantity = existing.quantity + quantity;
+      if (newQuantity > product.stock) {
+        return res.status(400).json({
+          message: "Not enough stock available for the requested quantity",
+        });
+      }
+
+      const [updated] = await db
+        .update(cartItems)
+        .set({ quantity: newQuantity })
+        .where(eq(cartItems.id, existing.id))
+        .returning();
+
+      return res.json({
+        message: "Cart updated",
+        item: updated,
+      });
+    }
+
+    // New cart item
+    if (quantity > product.stock) {
+      return res.status(400).json({
+        message: "Not enough stock available for the requested quantity",
+      });
+    }
+
+    const [inserted] = await db
+      .insert(cartItems)
+      .values({
+        userId,
+        productId,
+        quantity,
       })
-      .where(eq(cartItems.id, existing[0].id))
       .returning();
 
-    return res.json({
-      message: "Cart updated",
-      item: updated[0]
+    return res.status(201).json({
+      message: "Added to cart",
+      item: inserted,
     });
+  } catch (err) {
+    console.error("POST /cart/add error:", err);
+    return res.status(500).json({ message: "Failed to add item to cart" });
   }
-
-  // Insert new cart item
-  const inserted = await db
-    .insert(cartItems)
-    .values({
-      userId,
-      productId,
-      quantity
-    })
-    .returning();
-
-  return res.status(201).json({
-    message: "Added to cart",
-    item: inserted[0]
-  });
 });
 
-// GET /cart
-router.get('/', authMiddleware, async (req, res) => {
-  const userId = req.user.id;
+router.get("/", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
 
-  const items = await db
-    .select()
-    .from(cartItems)
-    .where(eq(cartItems.userId, userId));
+    const items = await db
+      .select()
+      .from(cartItems)
+      .where(eq(cartItems.userId, userId));
 
-  return res.json(items);
+    return res.json(items);
+  } catch (err) {
+    console.error("GET /cart error:", err);
+    return res.status(500).json({ message: "Failed to fetch cart items" });
+  }
 });
 
-// PUT /cart/update
-router.put('/update', authMiddleware, async (req, res) => {
-  const parsed = addToCartSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid data" });
+router.put("/update", authMiddleware, async (req, res) => {
+  try {
+    const parsed = addToCartSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid data" });
+    }
+
+    const { productId, quantity } = parsed.data;
+    const userId = req.user.id;
+
+    // Check product exists & is active
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, productId));
+
+    if (!product || product.isActive === false) {
+      return res.status(404).json({ message: "Product not found or inactive" });
+    }
+
+    if (quantity > product.stock) {
+      return res.status(400).json({
+        message: "Not enough stock available for the requested quantity",
+      });
+    }
+
+    const updated = await db
+      .update(cartItems)
+      .set({ quantity })
+      .where(
+        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      return res.status(404).json({ message: "Item not found in cart" });
+    }
+
+    return res.json({
+      message: "Cart item updated",
+      item: updated[0],
+    });
+  } catch (err) {
+    console.error("PUT /cart/update error:", err);
+    return res.status(500).json({ message: "Failed to update cart item" });
   }
-
-  const { productId, quantity } = parsed.data;
-  const userId = req.user.id;
-
-  const updated = await db
-    .update(cartItems)
-    .set({ quantity })
-    .where(
-      and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
-    )
-    .returning();
-
-  if (updated.length === 0) {
-    return res.status(404).json({ message: "Item not found in cart" });
-  }
-
-  return res.json({
-    message: "Cart item updated",
-    item: updated[0]
-  });
 });
 
-// DELETE /cart/remove/:productId
-router.delete('/remove/:productId', authMiddleware, async (req, res) => {
-  const productId = Number(req.params.productId);
-  const userId = req.user.id;
+router.delete("/remove/:productId", authMiddleware, async (req, res) => {
+  try {
+    const productId = Number(req.params.productId);
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return res.status(400).json({ message: "Invalid product ID" });
+    }
 
-  const deleted = await db
-    .delete(cartItems)
-    .where(
-      and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
-    )
-    .returning();
+    const userId = req.user.id;
 
-  if (deleted.length === 0) {
-    return res.status(404).json({ message: "Item not found" });
+    const deleted = await db
+      .delete(cartItems)
+      .where(
+        and(eq(cartItems.userId, userId), eq(cartItems.productId, productId))
+      )
+      .returning();
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ message: "Item not found in cart" });
+    }
+
+    return res.json({
+      message: "Item removed",
+      item: deleted[0],
+    });
+  } catch (err) {
+    console.error("DELETE /cart/remove/:productId error:", err);
+    return res.status(500).json({ message: "Failed to remove item from cart" });
   }
-
-  return res.json({
-    message: "Item removed",
-    item: deleted[0]
-  });
 });
 
 module.exports = router;

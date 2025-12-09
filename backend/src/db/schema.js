@@ -9,116 +9,151 @@ const {
   varchar,
 } = require("drizzle-orm/pg-core");
 
-// Roles: admin, customer, support, etc.
+// ROLES
 const roles = pgTable("roles", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(), // e.g. "customer", "sales_manager", "product_manager", "support_agent"
+});
+
+// CATEGORIES
+const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
 });
 
-// Users
+// USERS
 const users = pgTable("users", {
   id: serial("id").primaryKey(),
+
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  fullName: text("full_name").notNull(),
+
+  fullName: text("full_name").notNull(), 
+  taxId: text("tax_id"),                 
+  address: text("address"),             
+
   roleId: integer("role_id")
     .notNull()
     .references(() => roles.id),
+
   isActive: boolean("is_active").notNull().default(true),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
 
-// Products
+// PRODUCTS
 const products = pgTable("products", {
   id: serial("id").primaryKey(),
+
   name: text("name").notNull(),
+
+  model: text("model"),                  
+  serialNumber: text("serial_number").unique(),
   description: text("description"),
-  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   stock: integer("stock").notNull().default(0),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  cost: numeric("cost", { precision: 10, scale: 2 }),
+  warrantyStatus: text("warranty_status"),
+  distributorInfo: text("distributor_info"),
+  categoryId: integer("category_id").references(() => categories.id),
+  imageUrl: varchar("image_url", { length: 512 }),
   isActive: boolean("is_active").notNull().default(true),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-  imageUrl: varchar("image_url", { length: 512 }),
 });
 
-// Orders (one per purchase)
+// ORDERS
 const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
+
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),
-  status: text("status").notNull().default("pending"), // pending, paid, shipped, cancelled
-  total: numeric("total", { precision: 10, scale: 2 }).notNull().default("0"),
+
+  // "pending", "processing", "in-transit", "delivered", "cancelled", etc.
+  status: text("status").notNull().default("pending"),
+
+  // Total order amount (used as invoice total)
+  total: numeric("total", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
+
+  // Delivery address for this order.
+  shippingAddress: text("shipping_address").notNull(),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
 
-// Order items (products inside an order)
+// ORDER ITEMS
 const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
+
   orderId: integer("order_id")
     .notNull()
     .references(() => orders.id),
+
   productId: integer("product_id")
     .notNull()
     .references(() => products.id),
+
   quantity: integer("quantity").notNull().default(1),
+
+  // Price at time of purchase (supports discounts & later refunds)
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
 });
 
+// CART ITEMS
 const cartItems = pgTable("cart_items", {
   id: serial("id").primaryKey(),
+
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),
+
   productId: integer("product_id")
     .notNull()
     .references(() => products.id),
-  quantity: integer("quantity").notNull().default(1)
+
+  quantity: integer("quantity").notNull().default(1),
 });
 
-// Reviews (Ratings & Comments)
+// REVIEWS
 const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
 
-  // Link to the User who wrote it
   userId: integer("user_id")
-      .notNull()
-      .references(() => users.id),
+    .notNull()
+    .references(() => users.id),
 
-  // Link to the Product being reviewed
   productId: integer("product_id")
-      .notNull()
-      .references(() => products.id),
+    .notNull()
+    .references(() => products.id),
 
-  // The Rating (1-5)
-  rating: integer("rating").notNull(),
+  rating: integer("rating").notNull(), 
 
-  // The Comment (Text)
   comment: text("comment"),
 
-  // Approval Status (For the Manager check)
-  // 'pending' = submitted but hidden text
-  // 'approved' = visible to everyone
-  // 'rejected' = hidden forever
+  // "pending" (submitted, hidden), "approved" (visible), "rejected"
   status: text("status").notNull().default("pending"),
 
   createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
+    .defaultNow()
+    .notNull(),
 });
 
 module.exports = {
   roles,
+  categories,
   users,
   products,
   orders,
   orderItems,
   cartItems,
-  reviews
+  reviews,
 };
-
