@@ -22,15 +22,23 @@ router.post('/add', authMiddleware, async (req, res) => {
   const { productId, quantity } = parsed.data;
   const userId = req.user.id;
 
-  // Check product exists
-  const product = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, productId));
+// Check product exists
+const [productRow] = await db
+  .select()
+  .from(products)
+  .where(eq(products.id, productId));
 
-  if (product.length === 0) {
-    return res.status(404).json({ message: "Product not found" });
-  }
+if (!productRow) {
+  return res.status(404).json({ message: "Product not found" });
+}
+
+// ⛔ Block adding if out of stock
+if (productRow.stock <= 0) {
+  return res
+    .status(400)
+    .json({ message: "Product is out of stock and cannot be added to cart" });
+}
+
 
   // Check if already in cart
   const existing = await db
