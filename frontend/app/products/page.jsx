@@ -5,10 +5,20 @@ import Link from "next/link";
 import SiteLayout from "../../components/SiteLayout";
 import StockBadge from "../../components/StockBadge";
 import { useAuth } from "../../context/AuthContext";
-import { getProductsApi, addToCartApi } from "../../lib/api";
 
-const apiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+// Optional mapping for categories if you use categoryId
+const CATEGORY_LABELS = {
+  1: "Sneakers",
+  2: "Streetwear",
+  3: "Accessories",
+};
+
+function getCategoryLabel(categoryId) {
+  if (!categoryId) return "Uncategorized";
+  return CATEGORY_LABELS[categoryId] || `Category #${categoryId}`;
+}
 
 export default function ProductsPage() {
   const { user } = useAuth();
@@ -20,7 +30,9 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("featured");
+
   const [addingId, setAddingId] = useState(null);
 
   const isBrowser = typeof window !== "undefined";
@@ -62,28 +74,60 @@ export default function ProductsPage() {
     }
   }
 
+  // Load products from backend
   useEffect(() => {
     async function loadProducts() {
       setLoading(true);
       setMessage("");
-
       try {
-        const data = await getProductsApi();
+        const res = await fetch(`${apiBase}/products`);
+
+        if (!res.ok) {
+          let msg = "Failed to load products.";
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            try {
+              const errJson = await res.json();
+              if (errJson && errJson.message) msg = errJson.message;
+            } catch {
+              // ignore
+            }
+          }
+          setMessage(msg);
+          setProducts([]);
+          setLoading(false);
+          return;
+        }
+
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          setMessage("Unexpected response while loading products.");
+          setProducts([]);
+          setLoading(false);
+          return;
+        }
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          setMessage("Could not decode products data.");
+          setProducts([]);
+          setLoading(false);
+          return;
+        }
 
         if (!Array.isArray(data)) {
-          setMessage("Product data format is invalid.");
+          setMessage("Products data format is invalid.");
           setProducts([]);
+          setLoading(false);
           return;
         }
 
         setProducts(data);
       } catch (err) {
         console.error("Products load error:", err);
-        const msg =
-          err?.message && err.message !== "API request failed"
-            ? err.message
-            : "Failed to load drops.";
-        setMessage(msg);
+        setMessage("Failed to load products.");
         setProducts([]);
       } finally {
         setLoading(false);
@@ -93,33 +137,33 @@ export default function ProductsPage() {
     loadProducts();
   }, []);
 
-  // Build category list from products (clean + minimal)
-  const categories = useMemo(() => {
-    const map = new Map();
-
+  // Build category list from products
+  const categoryOptions = useMemo(() => {
+    const ids = new Set();
     products.forEach((p) => {
-      if (p.categoryId == null) return;
-      const value = String(p.categoryId);
-      // Try to find a readable label if backend provides it
-      const label =
-        p.categoryName ||
-        p.category ||
-        p.categoryLabel ||
-        `Category ${p.categoryId}`;
-      if (!map.has(value)) {
-        map.set(value, label);
-      }
+      if (p.categoryId != null) ids.add(p.categoryId);
     });
-
-    return Array.from(map, ([value, label]) => ({ value, label }));
+    const arr = Array.from(ids).sort((a, b) => a - b);
+    return arr.map((id) => ({
+      id,
+      label: getCategoryLabel(id),
+    }));
   }, [products]);
 
-  const filtered = useMemo(() => {
+  // Filter + sort products
+  const filteredAndSorted = useMemo(() => {
     let list = [...products];
+
+    // Only active products (but out-of-stock allowed)
+    list = list.filter((p) => p.isActive !== false);
 
     const q = search.trim().toLowerCase();
     if (q) {
-      list = list.filter((p) => (p.name || "").toLowerCase().includes(q));
+      list = list.filter((p) => {
+        const name = (p.name || "").toLowerCase();
+        const desc = (p.description || "").toLowerCase();
+        return name.includes(q) || desc.includes(q);
+      });
     }
 
     const min = parseFloat(minPrice);
@@ -132,40 +176,78 @@ export default function ProductsPage() {
       list = list.filter((p) => Number(p.price || 0) <= max);
     }
 
-    if (categoryFilter) {
-      list = list.filter(
-        (p) => p.categoryId != null && String(p.categoryId) === categoryFilter
-      );
+    if (categoryFilter !== "all") {
+      const catId = Number(categoryFilter);
+      if (!Number.isNaN(catId)) {
+        list = list.filter((p) => Number(p.categoryId) === catId);
+      }
     }
 
-    // Only show active products
-    list = list.filter((p) => p.isActive !== false);
+    // Sorting
+    switch (sortBy) {
+      case "priceAsc":
+        list.sort(
+          (a, b) => Number(a.price || 0) - Number(b.price || 0)
+        );
+        break;
+      case "priceDesc":
+        list.sort(
+          (a, b) => Number(b.price || 0) - Number(a.price || 0)
+        );
+        break;
+      case "popularity":
+        // Simple popularity approximation:
+        // use optional p.popularity if exists, else fallback to newest (id desc)
+        list.sort((a, b) => {
+          const aScore = Number(a.popularity || 0);
+          const bScore = Number(b.popularity || 0);
+          if (aScore === bScore) {
+            return Number(b.id || 0) - Number(a.id || 0);
+          }
+          return bScore - aScore;
+        });
+        break;
+      case "featured":
+      default:
+        // leave as is (backend order)
+        break;
+    }
 
     return list;
-  }, [products, search, minPrice, maxPrice, categoryFilter]);
+  }, [products, search, minPrice, maxPrice, categoryFilter, sortBy]);
 
   function handleResetFilters() {
     setSearch("");
     setMinPrice("");
     setMaxPrice("");
-    setCategoryFilter("");
+    setCategoryFilter("all");
+    setSortBy("featured");
   }
 
-  async function handleAddToCart(productId) {
-    console.log("ADD TO CART CLICK", { productId, user });
+  async function handleAddToCart(product) {
+    const productId = product.id;
+    const stock = Number(product.stock || 0);
 
-    // Guest user → localStorage cart
+    // Requirement 7: cannot add if out of stock
+    if (stock <= 0) {
+      const msg = "This product is sold out and cannot be added to your bag.";
+      setMessage(msg);
+      showAlert(msg);
+      return;
+    }
+
+    // no logged-in user → guest cart
     if (!user) {
       try {
         setAddingId(productId);
         addToGuestCart(productId);
 
         const msg =
-          "Drop added to your bag. You’ll be asked to log in when you check out.";
+          "Item added to your bag. You will be asked to log in when you place your order.";
         setMessage(msg);
       } catch (err) {
         console.error("Guest add error:", err);
-        const msg = "Could not add this drop to your bag.";
+        const msg = "Could not add this item to your bag.";
         setMessage(msg);
         showAlert(msg);
       } finally {
@@ -174,24 +256,59 @@ export default function ProductsPage() {
       return;
     }
 
-    // Logged-in user → server cart
+    // logged-in user → server cart
     try {
+      const token = isBrowser ? localStorage.getItem("token") : null;
+      if (!token) {
+        const msg = "Session expired. Please log in again.";
+        setMessage(msg);
+        showAlert(msg);
+        return;
+      }
+
       setAddingId(productId);
       setMessage("");
 
-      await addToCartApi({ productId, quantity: 1 });
+      const res = await fetch(`${apiBase}/cart/add`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          productId,
+          quantity: 1,
+        }),
+      });
+
+      const ct = res.headers.get("content-type") || "";
+      let data = null;
+      if (ct.includes("application/json")) {
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!res.ok) {
+        console.error("Add to cart failed:", data || {});
+        const msg =
+          (data && data.message) ||
+          "Could not add this item to your bag.";
+        setMessage(msg);
+        showAlert(msg);
+        return;
+      }
 
       if (isBrowser) {
         window.dispatchEvent(new Event("cart-updated"));
       }
 
-      setMessage("Drop added to your bag.");
+      setMessage("Item added to your bag.");
     } catch (err) {
       console.error("Add to cart error:", err);
-      const msg =
-        err?.data?.message ||
-        err?.message ||
-        "Could not add this drop to your bag.";
+      const msg = "Could not add this item to your bag.";
       setMessage(msg);
       showAlert(msg);
     } finally {
@@ -204,8 +321,8 @@ export default function ProductsPage() {
       <SiteLayout>
         <div className="space-y-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="h-5 w-28 rounded-full bg-gray-200 animate-pulse" />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="h-5 w-24 rounded-full bg-gray-200 animate-pulse" />
+            <div className="flex items-center gap-2">
               <div className="h-8 w-32 rounded-full bg-gray-200 animate-pulse" />
               <div className="h-8 w-24 rounded-full bg-gray-200 animate-pulse" />
               <div className="h-8 w-24 rounded-full bg-gray-200 animate-pulse" />
@@ -234,69 +351,70 @@ export default function ProductsPage() {
   return (
     <SiteLayout>
       <div className="space-y-5">
-        {/* Header */}
+        {/* Top controls: title + filters */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-lg sm:text-xl font-semibold tracking-[0.22em] uppercase text-gray-900">
-              Drops
-            </h1>
-            <p className="text-[11px] text-gray-500 uppercase tracking-[0.18em]">
-              Latest heat · Limited stock · First come, first served
-            </p>
-          </div>
+          <h1 className="text-lg sm:text-xl font-semibold tracking-[0.22em] uppercase text-gray-900">
+            Drops
+          </h1>
 
-          {/* Filter bar */}
-          <div className="flex flex-wrap items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-2 py-1 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search */}
             <input
               type="text"
-              placeholder="Search drops"
+              placeholder="Search name or description"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 rounded-full border-none bg-transparent px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-0 min-w-[140px]"
+              className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-black/40 min-w-[170px]"
             />
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min="0"
-                placeholder="Min $"
-                value={minPrice}
-                onChange={(e) => setMinPrice(e.target.value)}
-                className="h-8 w-[80px] rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-black/40"
-              />
-              <span className="text-[10px] text-gray-400 px-1">–</span>
-              <input
-                type="number"
-                min="0"
-                placeholder="Max $"
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(e.target.value)}
-                className="h-8 w-[80px] rounded-full border border-gray-200 bg-white px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-black/40"
-              />
-            </div>
+
+            {/* Price range */}
+            <input
+              type="number"
+              min="0"
+              placeholder="Min"
+              value={minPrice}
+              onChange={(e) => setMinPrice(e.target.value)}
+              className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-black/40 w-[80px]"
+            />
+            <input
+              type="number"
+              min="0"
+              placeholder="Max"
+              value={maxPrice}
+              onChange={(e) => setMaxPrice(e.target.value)}
+              className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-black/40 w-[80px]"
+            />
 
             {/* Category dropdown */}
-            <div className="relative">
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="h-8 max-w-[180px] appearance-none truncate rounded-full border border-gray-200 bg-white pl-3 pr-8 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/40"
-              >
-                <option value="">All categories</option>
-                {categories.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[10px] text-gray-400">
-                ▾
-              </span>
-            </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/40"
+            >
+              <option value="all">All categories</option>
+              {categoryOptions.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Sort dropdown */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/40"
+            >
+              <option value="featured">Featured</option>
+              <option value="priceAsc">Price: Low to High</option>
+              <option value="priceDesc">Price: High to Low</option>
+              <option value="popularity">Most Popular</option>
+            </select>
 
             <button
               type="button"
               onClick={handleResetFilters}
-              className="h-8 px-3 rounded-full bg-black text-white text-[10px] font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 active:scale-[0.97] transition-all"
+              className="h-9 px-4 rounded-full border bg-white/80 backdrop-blur text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-black hover:text-white transition-all active:scale-[0.97]"
             >
               Reset
             </button>
@@ -304,25 +422,22 @@ export default function ProductsPage() {
         </div>
 
         {message && (
-          <p className="text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 inline-block">
-            {message}
-          </p>
+          <p className="text-[11px] text-gray-600">{message}</p>
         )}
 
-        {/* Product grid */}
-        {filtered.length === 0 ? (
+        {filteredAndSorted.length === 0 ? (
           <p className="text-sm text-gray-500">
-            No drops match your filters. Try adjusting your search.
+            No products match your filters. Try clearing them.
           </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((product) => {
+            {filteredAndSorted.map((product) => {
               const priceNumber = Number(product.price || 0);
               const imageUrl = product.imageUrl
                 ? `${apiBase}${product.imageUrl}`
                 : null;
-              const outOfStock =
-                typeof product.stock === "number" && product.stock <= 0;
+              const stock = Number(product.stock || 0);
+              const isSoldOut = stock <= 0;
 
               return (
                 <div
@@ -331,28 +446,21 @@ export default function ProductsPage() {
                 >
                   <Link
                     href={`/products/${product.id}`}
-                    className="block mb-3 rounded-2xl overflow-hidden bg-gray-100 relative"
+                    className="block mb-3 rounded-2xl overflow-hidden bg-gray-100"
                   >
                     <div className="w-full aspect-square flex items-center justify-center">
                       {imageUrl ? (
                         <img
                           src={imageUrl}
-                          alt={product.name || "Drop"}
+                          alt={product.name || "Sneaks-up drop"}
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : (
                         <span className="text-[9px] uppercase tracking-[0.22em] text-gray-400">
-                          Hype drop
+                          Sneaks-up drop
                         </span>
                       )}
                     </div>
-                    {outOfStock && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white">
-                          Sold out
-                        </span>
-                      </div>
-                    )}
                   </Link>
 
                   <div className="flex-1 space-y-1 mb-3">
@@ -364,23 +472,32 @@ export default function ProductsPage() {
                         ${priceNumber.toFixed(2)}
                       </p>
                     </div>
+
                     {product.description && (
                       <p className="text-[11px] text-gray-500 line-clamp-2">
                         {product.description}
                       </p>
                     )}
-                    <div className="pt-1">
+
+                    <div className="pt-1 flex items-center justify-between">
                       <StockBadge stock={product.stock} tone="muted" />
+                      <span className="text-[10px] text-gray-400 uppercase tracking-[0.18em]">
+                        {getCategoryLabel(product.categoryId)}
+                      </span>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => handleAddToCart(product.id)}
-                    disabled={addingId === product.id || outOfStock}
-                    className="mt-auto inline-flex items-center justify-center rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] px-4 py-2 hover:bg-gray-900 active:scale-[0.97] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => handleAddToCart(product)}
+                    disabled={addingId === product.id || isSoldOut}
+                    className={`mt-auto inline-flex items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.18em] px-4 py-2 transition-all active:scale-[0.97] ${
+                      isSoldOut
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-black text-white hover:bg-gray-900"
+                    } disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
-                    {outOfStock
+                    {isSoldOut
                       ? "Sold out"
                       : addingId === product.id
                       ? "Adding…"
