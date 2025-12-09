@@ -6,30 +6,54 @@ import SiteLayout from "../../../components/SiteLayout";
 import ActionButton from "../../../components/ActionButton";
 import { useAuth } from "../../../context/AuthContext";
 
-const STATUS_OPTIONS = ["pending", "paid", "shipped", "delivered", "cancelled"];
+const apiBase =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+
+const STATUS_OPTIONS = ["processing", "in_transit", "delivered", "cancelled"];
 
 function statusBadgeClasses(status) {
   switch (status) {
-    case "paid":
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-    case "shipped":
+    case "processing":
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+    case "in_transit":
       return "bg-blue-50 text-blue-700 border border-blue-200";
     case "delivered":
-      return "bg-purple-50 text-purple-700 border border-purple-200";
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     case "cancelled":
       return "bg-red-50 text-red-700 border border-red-200";
+    // Legacy/other statuses
     case "pending":
+    case "paid":
+    case "shipped":
     default:
-      return "bg-amber-50 text-amber-700 border border-amber-200";
+      return "bg-gray-50 text-gray-700 border border-gray-200";
+  }
+}
+
+function formatStatusLabel(status) {
+  switch (status) {
+    case "processing":
+      return "processing";
+    case "in_transit":
+      return "in-transit";
+    case "delivered":
+      return "delivered";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return status || "unknown";
   }
 }
 
 const STATUS_VARIANTS = {
+  processing: "muted",
+  in_transit: "info",
+  delivered: "accent",
+  cancelled: "danger",
+  // legacy
   pending: "muted",
   paid: "success",
   shipped: "info",
-  delivered: "accent",
-  cancelled: "danger",
 };
 
 export function statusActionVariant(status) {
@@ -38,7 +62,6 @@ export function statusActionVariant(status) {
 
 export default function AdminOrdersPage() {
   const { user, loadingUser } = useAuth();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
@@ -49,6 +72,8 @@ export default function AdminOrdersPage() {
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
 
+  const isBrowser = typeof window !== "undefined";
+
   // Load all orders (admin) + products for names/images
   useEffect(() => {
     async function loadAll() {
@@ -56,10 +81,7 @@ export default function AdminOrdersPage() {
       setMessage("");
 
       try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("token")
-            : null;
+        const token = isBrowser ? window.localStorage.getItem("token") : null;
 
         if (!token) {
           setOrders([]);
@@ -139,7 +161,7 @@ export default function AdminOrdersPage() {
     } else if (!loadingUser) {
       setLoading(false);
     }
-  }, [apiBase, loadingUser, user]);
+  }, [loadingUser, user, isBrowser]);
 
   const productsMap = useMemo(() => {
     const m = new Map();
@@ -151,13 +173,12 @@ export default function AdminOrdersPage() {
 
   const stats = useMemo(() => {
     const total = orders.length;
-    const pending = orders.filter((o) => o.status === "pending").length;
-    const paid = orders.filter((o) => o.status === "paid").length;
-    const shipped = orders.filter((o) => o.status === "shipped").length;
+    const processing = orders.filter((o) => o.status === "processing").length;
+    const inTransit = orders.filter((o) => o.status === "in_transit").length;
     const delivered = orders.filter((o) => o.status === "delivered").length;
     const cancelled = orders.filter((o) => o.status === "cancelled").length;
 
-    return { total, pending, paid, shipped, delivered, cancelled };
+    return { total, processing, inTransit, delivered, cancelled };
   }, [orders]);
 
   function ensureAdmin() {
@@ -181,8 +202,7 @@ export default function AdminOrdersPage() {
     if (detailsById[orderId]) return;
 
     try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = isBrowser ? window.localStorage.getItem("token") : null;
 
       if (!token) {
         setMessage("Please login as admin.");
@@ -244,8 +264,7 @@ export default function AdminOrdersPage() {
     if (!ensureAdmin()) return;
 
     try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = isBrowser ? window.localStorage.getItem("token") : null;
 
       if (!token) {
         setMessage("Please login as admin.");
@@ -280,7 +299,7 @@ export default function AdminOrdersPage() {
           (data && data.message) ||
           "Failed to update order status. Please try again.";
         setMessage(msg);
-        if (typeof window !== "undefined") window.alert(msg);
+        if (isBrowser) window.alert(msg);
         return;
       }
 
@@ -289,7 +308,9 @@ export default function AdminOrdersPage() {
 
       setOrders((prev) =>
         prev.map((o) =>
-          o.id === orderId ? { ...o, status: updatedOrder?.status || newStatus } : o
+          o.id === orderId
+            ? { ...o, status: updatedOrder?.status || newStatus }
+            : o
         )
       );
 
@@ -314,7 +335,7 @@ export default function AdminOrdersPage() {
       console.error("Status update error:", err);
       const msg = "Something went wrong while updating order status.";
       setMessage(msg);
-      if (typeof window !== "undefined") window.alert(msg);
+      if (isBrowser) window.alert(msg);
     } finally {
       setStatusUpdatingId(null);
     }
@@ -325,8 +346,7 @@ export default function AdminOrdersPage() {
     if (!ensureAdmin()) return;
 
     try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = isBrowser ? window.localStorage.getItem("token") : null;
 
       if (!token) {
         setMessage("Please login as admin.");
@@ -356,15 +376,14 @@ export default function AdminOrdersPage() {
         }
         console.error("Invoice download failed:", res.status);
         setMessage(msg);
-        if (typeof window !== "undefined") window.alert(msg);
+        if (isBrowser) window.alert(msg);
         return;
       }
 
-      // Expect PDF (application/pdf)
       if (!ct.includes("application/pdf")) {
-        // Might be some unexpected content – try to parse error
-        setMessage("Unexpected invoice response.");
-        if (typeof window !== "undefined")
+        const msg = "Unexpected invoice response.";
+        setMessage(msg);
+        if (isBrowser)
           window.alert("Unexpected invoice response from server.");
         return;
       }
@@ -383,7 +402,7 @@ export default function AdminOrdersPage() {
       console.error("Invoice download error:", err);
       const msg = "Invoice download failed. Please try again.";
       setMessage(msg);
-      if (typeof window !== "undefined") window.alert(msg);
+      if (isBrowser) window.alert(msg);
     } finally {
       setInvoiceLoadingId(null);
     }
@@ -486,28 +505,19 @@ export default function AdminOrdersPage() {
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
             <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
-              Pending
+              Processing
             </p>
             <p className="mt-2 text-xl font-semibold text-amber-700">
-              {stats.pending}
+              {stats.processing}
             </p>
-            <p className="mt-1 text-[11px] text-gray-500">Awaiting payment</p>
+            <p className="mt-1 text-[11px] text-gray-500">In warehouse</p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
             <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
-              Paid
-            </p>
-            <p className="mt-2 text-xl font-semibold text-emerald-700">
-              {stats.paid}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">Ready to ship</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
-              Shipped
+              In-transit
             </p>
             <p className="mt-2 text-xl font-semibold text-blue-700">
-              {stats.shipped}
+              {stats.inTransit}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">On the way</p>
           </div>
@@ -515,10 +525,19 @@ export default function AdminOrdersPage() {
             <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
               Delivered
             </p>
-            <p className="mt-2 text-xl font-semibold text-purple-700">
+            <p className="mt-2 text-xl font-semibold text-emerald-700">
               {stats.delivered}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">On feet</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              Cancelled
+            </p>
+            <p className="mt-2 text-xl font-semibold text-red-700">
+              {stats.cancelled}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">Stopped</p>
           </div>
         </div>
 
@@ -569,7 +588,7 @@ export default function AdminOrdersPage() {
                           <span
                             className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.16em] ${statusClass}`}
                           >
-                            {order.status}
+                            {formatStatusLabel(order.status)}
                           </span>
                         </div>
                         <p className="text-[11px] text-gray-500">
@@ -610,7 +629,7 @@ export default function AdminOrdersPage() {
                                   handleChangeStatus(order.id, status)
                                 }
                               >
-                                {status}
+                                {formatStatusLabel(status)}
                               </ActionButton>
                             );
                           })}
@@ -656,9 +675,11 @@ export default function AdminOrdersPage() {
                               );
                               const lineTotal =
                                 unitPrice * (item.quantity || 0);
-                              const imageUrl = p?.imageUrl
-                                ? `${apiBase}${p.imageUrl}`
-                                : null;
+
+                              let imageUrl = p?.imageUrl || null;
+                              if (imageUrl && !imageUrl.startsWith("http")) {
+                                imageUrl = `${apiBase}${imageUrl}`;
+                              }
 
                               return (
                                 <div
