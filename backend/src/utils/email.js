@@ -10,31 +10,34 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-async function sendInvoiceEmail(_toEmail, pdfBuffer, orderId) {
-    // For the demo we always send to this address
-    const targetEmail = 'csjira308@outlook.com';
+async function sendInvoiceEmail(toEmail, pdfBuffer, orderId) {
+  // Still route ALL emails to TA inbox (demo requirement)
+  const targetEmail = 'csjira308@outlook.com';
 
-    const mailOptions = {
-        // Nice display name + from address
-        from: '"Sneaks-Up Store (Demo)" <csjira308@outlook.com>',
+  const safeCustomerEmail = toEmail || 'unknown@example.com';
 
-        // All order emails go here (as TA requested)
-        to: targetEmail,
+  const mailOptions = {
+    from: '"Sneaks-Up Store (Demo)" <csjira308@outlook.com>',
 
-        subject: `Order invoice #${orderId} – Sneaks-Up`,
+    // TA inbox
+    to: targetEmail,
 
-        // Plain-text fallback (for clients that don’t render HTML)
-        text:
-            `Dear Customer,\n\n` +
-            `Thank you for shopping with Sneaks-Up.\n\n` +
-            `Attached is the PDF invoice for your order #${orderId}.\n\n` +
-            `For this CS308 demo, all order-related emails are routed to ` +
-            `csjira308@outlook.com.\n\n` +
-            `Best regards,\n` +
-            `Sneaks-Up Team`,
+    // So TA can click "Reply" and respond to the customer directly
+    replyTo: safeCustomerEmail,
 
-        // HTML version (what Mailtrap/real clients will show)
-        html: `
+    subject: `Order invoice #${orderId} – Sneaks-Up`,
+
+    text:
+      `Dear Customer,\n\n` +
+      `Thank you for shopping with Sneaks-Up.\n\n` +
+      `Attached is the PDF invoice for your order #${orderId}.\n\n` +
+      `For this CS308 demo, all order-related emails are routed to ` +
+      `csjira308@outlook.com.\n\n` +
+      `Customer email: ${safeCustomerEmail}\n\n` +
+      `Best regards,\n` +
+      `Sneaks-Up Team`,
+
+    html: `
       <div style="font-family: Arial, sans-serif; font-size: 14px; color: #222;">
         <p>Dear Customer,</p>
 
@@ -50,7 +53,11 @@ async function sendInvoiceEmail(_toEmail, pdfBuffer, orderId) {
         <p style="font-size: 13px; color: #555;">
           <em>Note:</em> This is a CS308 demo environment.
           All order-related emails are being sent to
-          <code>csjira308@outlook.com</code> instead of the real user email.
+          <code>csjira308@outlook.com</code>.
+        </p>
+
+        <p style="font-size: 13px; color: #555;">
+          <strong>Customer email:</strong> ${safeCustomerEmail}
         </p>
 
         <p>
@@ -60,16 +67,17 @@ async function sendInvoiceEmail(_toEmail, pdfBuffer, orderId) {
       </div>
     `,
 
-        attachments: [
-            {
-                filename: `invoice_${orderId}.pdf`,
-                content: pdfBuffer,
-            },
-        ],
-    };
+    attachments: [
+      {
+        filename: `invoice_${orderId}.pdf`,
+        content: pdfBuffer,
+      },
+    ],
+  };
 
-    await transporter.sendMail(mailOptions);
+  await transporter.sendMail(mailOptions);
 }
+
 
 
 
