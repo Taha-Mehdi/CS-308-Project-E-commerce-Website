@@ -20,6 +20,27 @@ import {
   Legend,
 } from "recharts";
 
+function formatStatusLabel(status) {
+  switch (status) {
+    case "processing":
+      return "processing";
+    case "in_transit":
+      return "in-transit";
+    case "delivered":
+      return "delivered";
+    case "cancelled":
+      return "cancelled";
+    case "paid":
+      return "paid";
+    case "pending":
+      return "pending";
+    case "shipped":
+      return "shipped";
+    default:
+      return status || "unknown";
+  }
+}
+
 export default function AdminAnalyticsPage() {
   const { user, loadingUser } = useAuth();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -59,7 +80,9 @@ export default function AdminAnalyticsPage() {
               const json = await res.json();
               if (json?.message) msg = json.message;
             }
-          } catch {}
+          } catch {
+            // ignore
+          }
 
           setMessage(msg);
           setOrders([]);
@@ -100,11 +123,36 @@ export default function AdminAnalyticsPage() {
   // ---------------- DATA PROCESSING ----------------
   const analytics = useMemo(() => calculateAnalytics(orders), [orders]);
 
+  // Build status chart data dynamically from whatever statuses exist
   const statusChartData = useMemo(() => {
-    const statuses = ["pending", "paid", "shipped", "delivered", "cancelled"];
-    return statuses.map((s) => ({
-      status: s,
-      count: analytics.statusCounts[s] || 0,
+    const entries = Object.entries(analytics.statusCounts || {});
+
+    if (entries.length === 0) return [];
+
+    // Sort so the main shipping pipeline appears first
+    const priorityOrder = [
+      "processing",
+      "in_transit",
+      "delivered",
+      "cancelled",
+      "paid",
+      "pending",
+      "shipped",
+    ];
+
+    const sortKey = (status) => {
+      const idx = priorityOrder.indexOf(status);
+      return idx === -1 ? 999 : idx;
+    };
+
+    const sorted = entries.sort(
+      ([aStatus], [bStatus]) => sortKey(aStatus) - sortKey(bStatus)
+    );
+
+    return sorted.map(([status, count]) => ({
+      statusLabel: formatStatusLabel(status),
+      rawStatus: status,
+      count: count || 0,
     }));
   }, [analytics.statusCounts]);
 
@@ -220,7 +268,7 @@ export default function AdminAnalyticsPage() {
               {analytics.completionRate.toFixed(0)}%
             </p>
             <p className="text-[11px] text-gray-500">
-              Paid/Shipped/Delivered share
+              Share of non-cancelled orders
             </p>
           </div>
           <div className="rounded-2xl p-4 bg-white border border-gray-200 shadow-sm">
@@ -304,25 +352,31 @@ export default function AdminAnalyticsPage() {
             </p>
 
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statusChartData}>
-                  <CartesianGrid strokeDasharray="4 4" opacity={0.3} />
-                  <XAxis
-                    dataKey="status"
-                    tick={{ fontSize: 10 }}
-                    tickMargin={10}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    tickMargin={4}
-                    allowDecimals={false}
-                    width={40}
-                  />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="count" fill="#111" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {statusChartData.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-xs text-gray-500">
+                  Not enough data yet.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusChartData}>
+                    <CartesianGrid strokeDasharray="4 4" opacity={0.3} />
+                    <XAxis
+                      dataKey="statusLabel"
+                      tick={{ fontSize: 10 }}
+                      tickMargin={10}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickMargin={4}
+                      allowDecimals={false}
+                      width={40}
+                    />
+                    <Tooltip contentStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="count" fill="#111" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
         </div>

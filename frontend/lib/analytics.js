@@ -21,14 +21,18 @@ export function calculateAnalytics(orders = []) {
   for (const o of orders) {
     const totalNum = Number(o.total || 0);
     const status = o.status || "pending";
+
+    // count statuses generically so any status ("processing", "in_transit", etc.) works
     statusCounts[status] = (statusCounts[status] || 0) + 1;
 
+    // revenue: ignore cancelled orders
     if (status !== "cancelled") {
       totalRevenue += totalNum;
+
       if (o.createdAt) {
         const d = new Date(o.createdAt);
         if (!Number.isNaN(d.getTime())) {
-          const key = d.toISOString().slice(0, 10);
+          const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
           revenueMap.set(key, (revenueMap.get(key) || 0) + totalNum);
         }
       }
@@ -44,6 +48,7 @@ export function calculateAnalytics(orders = []) {
     }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 
+  // recent 7 days revenue (including today)
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
   const recentRevenue = revenueByDay
@@ -53,12 +58,14 @@ export function calculateAnalytics(orders = []) {
   const totalDays = revenueByDay.length || 1;
   const avgPerDay = totalRevenue / totalDays;
 
-  const completedOrders =
-    (statusCounts.delivered || 0) +
-    (statusCounts.shipped || 0) +
-    (statusCounts.paid || 0);
+  // completionRate = share of non-cancelled orders
+  const nonCancelledOrders = Object.entries(statusCounts).reduce(
+    (acc, [status, count]) =>
+      status === "cancelled" ? acc : acc + (count || 0),
+    0
+  );
   const completionRate =
-    orderCount > 0 ? (completedOrders / orderCount) * 100 : 0;
+    orderCount > 0 ? (nonCancelledOrders / orderCount) * 100 : 0;
 
   const topDay =
     revenueByDay.length === 0

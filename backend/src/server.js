@@ -5,6 +5,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+const { ensureDefaultCategories } = require("./utils/ensureCategories");
 
 const { pool } = require("./db");
 

@@ -181,6 +181,14 @@ export default function AdminOrdersPage() {
     return { total, processing, inTransit, delivered, cancelled };
   }, [orders]);
 
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return db - da; // newest first
+    });
+  }, [orders]);
+
   function ensureAdmin() {
     if (!user || user.roleId !== 1) {
       setMessage("You do not have admin permissions.");
@@ -561,13 +569,13 @@ export default function AdminOrdersPage() {
 
           {loading ? (
             <p className="text-sm text-gray-500">Loading orders…</p>
-          ) : orders.length === 0 ? (
+          ) : sortedOrders.length === 0 ? (
             <p className="text-sm text-gray-500">
               No orders yet. Once customers check out, they will show up here.
             </p>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => {
+              {sortedOrders.map((order) => {
                 const isExpanded = expandedId === order.id;
                 const statusClass = statusBadgeClasses(order.status);
                 const orderDetails = detailsById[order.id];
@@ -611,28 +619,26 @@ export default function AdminOrdersPage() {
                           ${Number(order.total || 0).toFixed(2)}
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
-                          {STATUS_OPTIONS.map((status) => {
-                            const active = order.status === status;
-                            return (
-                              <ActionButton
-                                key={status}
-                                type="button"
-                                size="xs"
-                                variant={statusActionVariant(status)}
-                                disabled={statusUpdatingId === order.id}
-                                className={
-                                  active
-                                    ? "ring-2 ring-offset-1 ring-black/60"
-                                    : "opacity-90"
-                                }
-                                onClick={() =>
-                                  handleChangeStatus(order.id, status)
-                                }
-                              >
-                                {formatStatusLabel(status)}
-                              </ActionButton>
-                            );
-                          })}
+                          {/* STATUS DROPDOWN */}
+                          <div className="relative">
+                            <select
+                              value={order.status}
+                              disabled={statusUpdatingId === order.id}
+                              onChange={(e) =>
+                                handleChangeStatus(order.id, e.target.value)
+                              }
+                              className="appearance-none rounded-full border border-gray-300 bg-white px-3 pr-8 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-800 hover:border-black/60 focus:outline-none focus:ring-2 focus:ring-black/15"
+                            >
+                              {STATUS_OPTIONS.map((status) => (
+                                <option key={status} value={status}>
+                                  {formatStatusLabel(status)}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">
+                              ▾
+                            </span>
+                          </div>
 
                           <ActionButton
                             type="button"

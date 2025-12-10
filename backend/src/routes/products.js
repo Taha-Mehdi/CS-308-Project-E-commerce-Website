@@ -1,3 +1,4 @@
+// backend/src/routes/products.js
 const express = require("express");
 const { z } = require("zod");
 const { db } = require("../db");
@@ -20,6 +21,13 @@ function parseIsActive(raw) {
   return undefined;
 }
 
+function parseCategoryId(raw) {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const num = Number(raw);
+  if (Number.isNaN(num)) return undefined;
+  return num;
+}
+
 const productBodySchema = z.object({
   name: z.string().min(1, "Product name is required"),
 
@@ -32,7 +40,7 @@ const productBodySchema = z.object({
   warrantyStatus: z.string().min(1, "Warranty status is required"),
   distributorInfo: z.string().min(1, "Distributor information is required"),
 
-  // Optional but supported:
+  // Optional:
   isActive: z.boolean().optional().default(true),
   categoryId: z.number().int().optional().nullable(),
   cost: z.number().nonnegative("Cost must be >= 0").optional(),
@@ -48,50 +56,41 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, `${unique}${path.extname(file.originalname)}`);
-  }
+  },
 });
 
 const upload = multer({ storage });
 
-
-// GET /products
-// Public – list products with optional search + sorting
-// query params:
-//   q: search term (matches name or description, case-insensitive)
-//   sortBy: "price" | "popularity"
-//   sortOrder: "asc" | "desc"  (default: asc for price, desc for popularity)
-
+// -----------------------------------------------------
+// GET /products  (search + sort)
+// -----------------------------------------------------
 router.get("/", async (req, res) => {
   const { q, sortBy, sortOrder } = req.query;
 
   try {
     let query = db.select().from(products);
 
-    // 🔍 search by name or description (case-insensitive)
+    // search by name or description (case-insensitive)
     if (q && q.trim() !== "") {
       const term = `%${q.trim()}%`;
       query = query.where(
-        or(
-          ilike(products.name, term),
-          ilike(products.description, term)
-        )
+        or(ilike(products.name, term), ilike(products.description, term))
       );
     }
 
-    // ↕️ sorting
+    // sorting
     if (sortBy === "price") {
       query = query.orderBy(
         sortOrder === "desc" ? desc(products.price) : asc(products.price)
       );
     } else if (sortBy === "popularity") {
-      // assumes a "popularity" column exists on products
       query = query.orderBy(
         sortOrder === "asc"
           ? asc(products.popularity)
           : desc(products.popularity)
       );
     } else {
-      // stable default
+      // default — stable
       query = query.orderBy(asc(products.id));
     }
 
@@ -103,10 +102,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-
-//GET /products/:id
-//Public – get single product by id
- 
+// -----------------------------------------------------
+// GET /products/:id
+// -----------------------------------------------------
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -128,7 +126,9 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
+// -----------------------------------------------------
+// POST /products (admin)
+// -----------------------------------------------------
 router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const parsed = productBodySchema.safeParse({
@@ -143,9 +143,13 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
       distributorInfo: req.body.distributorInfo,
 
       isActive: parseIsActive(req.body.isActive),
-      categoryId:
-        req.body.categoryId !== undefined ? Number(req.body.categoryId) : undefined,
-      cost: req.body.cost !== undefined ? Number(req.body.cost) : undefined,
+      categoryId: parseCategoryId(req.body.categoryId),
+      cost:
+        req.body.cost !== undefined &&
+        req.body.cost !== null &&
+        req.body.cost !== ""
+          ? Number(req.body.cost)
+          : undefined,
     });
 
     if (!parsed.success) {
@@ -183,6 +187,9 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------
+// PUT /products/:id (admin)
+// -----------------------------------------------------
 router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -202,9 +209,13 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
       distributorInfo: req.body.distributorInfo,
 
       isActive: parseIsActive(req.body.isActive),
-      categoryId:
-        req.body.categoryId !== undefined ? Number(req.body.categoryId) : undefined,
-      cost: req.body.cost !== undefined ? Number(req.body.cost) : undefined,
+      categoryId: parseCategoryId(req.body.categoryId),
+      cost:
+        req.body.cost !== undefined &&
+        req.body.cost !== null &&
+        req.body.cost !== ""
+          ? Number(req.body.cost)
+          : undefined,
     });
 
     if (!parsed.success) {
@@ -247,6 +258,9 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------
+// DELETE /products/:id (admin)
+// -----------------------------------------------------
 router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -270,6 +284,9 @@ router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------
+// POST /products/:id/image (admin)
+// -----------------------------------------------------
 router.post(
   "/:id/image",
   authMiddleware,

@@ -101,8 +101,9 @@ export default function AdminDashboardPage() {
       return sum + (Number.isNaN(num) ? 0 : num);
     }, 0);
 
-    const pendingOrders = orders.filter((o) => o.status === "pending").length;
-    const shippedOrders = orders.filter((o) => o.status === "shipped").length;
+    // use the new statuses
+    const processingOrders = orders.filter((o) => o.status === "processing").length;
+    const inTransitOrders = orders.filter((o) => o.status === "in_transit").length;
     const deliveredOrders = orders.filter((o) => o.status === "delivered").length;
 
     const totalProducts = products.length;
@@ -119,8 +120,8 @@ export default function AdminDashboardPage() {
     return {
       totalOrders,
       totalRevenue,
-      pendingOrders,
-      shippedOrders,
+      processingOrders,
+      inTransitOrders,
       deliveredOrders,
       totalProducts,
       lowStockProducts,
@@ -237,7 +238,7 @@ export default function AdminDashboardPage() {
               {stats.totalOrders}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">
-              {stats.pendingOrders} pending · {stats.shippedOrders} shipped
+              {stats.processingOrders} processing · {stats.inTransitOrders} in-transit
             </p>
           </div>
 
@@ -279,16 +280,17 @@ export default function AdminDashboardPage() {
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
             </div>
             <p className="mt-3 text-2xl font-semibold text-gray-900">
-              {stats.pendingOrders > 0 ? "Live" : "Stable"}
+              {stats.processingOrders + stats.inTransitOrders > 0 ? "Live" : "Stable"}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">
-              Pending: {stats.pendingOrders} · Shipped: {stats.shippedOrders}
+              Processing: {stats.processingOrders} · In-transit: {stats.inTransitOrders}
             </p>
           </div>
         </div>
 
         {/* Navigation cards */}
         <div className="grid gap-4 md:grid-cols-3">
+          {/* Products */}
           <Link
             href="/admin/products"
             className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
@@ -318,6 +320,7 @@ export default function AdminDashboardPage() {
             </div>
           </Link>
 
+          {/* Orders */}
           <Link
             href="/admin/orders"
             className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
@@ -332,7 +335,7 @@ export default function AdminDashboardPage() {
                 </h2>
               </div>
               <span className="inline-flex h-7 px-3 rounded-full bg-gray-900 text-[11px] font-medium text-white items-center justify-center">
-                {stats.pendingOrders} pending
+                {stats.processingOrders + stats.inTransitOrders} active
               </span>
             </div>
             <p className="mt-3 text-xs text-gray-600">
@@ -347,6 +350,7 @@ export default function AdminDashboardPage() {
             </div>
           </Link>
 
+          {/* Analytics (replaces Categories) */}
           <Link
             href="/admin/analytics"
             className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
@@ -419,7 +423,7 @@ export default function AdminDashboardPage() {
                       <p className="text-xs font-semibold text-gray-900">
                         ${Number(o.total || 0).toFixed(2)}
                       </p>
-                      <p className="text-[11px] text-gray-500 capitalize">
+                      <p className="text-[11px] text-gray-500">
                         {o.status}
                       </p>
                     </div>

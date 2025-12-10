@@ -228,7 +228,7 @@ export default function CartPage() {
   // Step 2 -> Step 3
   function handleProceedToPayment() {
     if (!address.street || !address.city || !address.zip) {
-      setPaymentError("Please fill in all address fields.");
+      setPaymentError("Please fill in all shipping fields.");
       return;
     }
     setPaymentError("");
@@ -238,7 +238,7 @@ export default function CartPage() {
   // Step 3 -> Step 4 (Finalize)
   async function finalizeOrder() {
     if (!cardName || cardNumber.length < 12) {
-      setPaymentError("Please enter a valid Name and Card Number.");
+      setPaymentError("Please enter a valid card holder and number.");
       return;
     }
 
@@ -271,15 +271,45 @@ export default function CartPage() {
     }
   }
 
+  // --- UI HELPERS ---
+
+  const stepConfig = [
+    { id: 1, label: "Bag" },
+    { id: 2, label: "Shipping" },
+    { id: 3, label: "Payment" },
+    { id: 4, label: "Done" },
+  ];
+
+  const isStepComplete = (step) => checkoutStep > step;
+  const isStepActive = (step) => checkoutStep === step;
+
   // --- RENDERING ---
 
-  if (loading) {
+  if (loading || loadingUser) {
     return (
       <SiteLayout>
-        <div className="flex justify-center py-20">
-          <p className="text-sm text-gray-500 animate-pulse">
-            Loading your bag…
-          </p>
+        <div className="py-16 space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-400">
+                Sneaks-up
+              </p>
+              <div className="mt-2 h-6 w-40 rounded-full bg-gray-200 animate-pulse" />
+            </div>
+            <div className="h-9 w-32 rounded-full bg-gray-200 animate-pulse" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm space-y-3"
+              >
+                <div className="w-full aspect-square rounded-2xl bg-gray-200 animate-pulse" />
+                <div className="h-4 w-2/3 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-1/3 rounded bg-gray-200 animate-pulse" />
+              </div>
+            ))}
+          </div>
         </div>
       </SiteLayout>
     );
@@ -289,71 +319,145 @@ export default function CartPage() {
   if (checkoutStep === 4) {
     return (
       <SiteLayout>
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <div className="bg-white w-full max-w-2xl p-10 rounded-xl shadow-2xl border border-gray-200">
-            <div className="text-center mb-8 border-b pb-6">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <span className="text-3xl">✅</span>
-              </div>
-              <h2 className="text-3xl font-extrabold text-black tracking-tight">
-                PAYMENT SUCCESSFUL
-              </h2>
-              <p className="text-gray-500 mt-2 font-medium">
-                Thank you for your purchase!
+        <div className="space-y-6 py-8">
+          {/* Header + steps */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+                Sneaks-up
               </p>
+              <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+                Checkout
+              </h1>
             </div>
+            <Link
+              href="/products"
+              className="px-4 py-2.5 rounded-full border border-gray-300 bg-white text-xs font-semibold uppercase tracking-[0.18em] text-gray-900 hover:bg-gray-100 transition-colors"
+            >
+              Back to drops
+            </Link>
+          </div>
 
-            <div className="grid grid-cols-2 gap-8 mb-8">
-              <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Shipped To
+          {/* Stepper */}
+          <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]">
+            {stepConfig.map((step, idx) => (
+              <div key={step.id} className="flex items-center gap-3">
+                <div
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold ${
+                    checkoutStep >= step.id
+                      ? "bg-black text-white border-black"
+                      : "bg-white text-gray-500 border-gray-300"
+                  }`}
+                >
+                  {step.id}
+                </div>
+                <span
+                  className={
+                    checkoutStep >= step.id
+                      ? "text-gray-900"
+                      : "text-gray-400"
+                  }
+                >
+                  {step.label}
+                </span>
+                {idx < stepConfig.length - 1 && (
+                  <div className="h-px w-6 bg-gray-200" />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Success card */}
+          <div className="flex justify-center pt-4 pb-12">
+            <div className="w-full max-w-2xl rounded-3xl border border-gray-200 bg-white px-6 py-8 sm:px-10 sm:py-10 shadow-lg shadow-black/5 space-y-6">
+              <div className="text-center space-y-3 border-b border-gray-100 pb-6">
+                <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <span className="text-3xl">✓</span>
+                </div>
+                <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-emerald-600">
+                  Payment confirmed
                 </p>
-                <p className="text-lg font-bold text-black">
-                  {user?.fullName || "Valued Customer"}
-                </p>
-                <p className="text-sm text-gray-800 font-medium">
-                  {address.street}
-                </p>
-                <p className="text-sm text-gray-800 font-medium">
-                  {address.city}, {address.zip}
-                </p>
-                <p className="text-sm text-gray-800 font-medium">
-                  {address.country}
+                <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+                  Your pair is locked in
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-500 max-w-md mx-auto">
+                  We’ve reserved your sneakers and sent a confirmation to your
+                  account email. You’ll get tracking details as soon as they
+                  ship.
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Invoice Info
-                </p>
-                <p className="text-sm font-bold text-black">
-                  Order #:{" "}
-                  <span className="font-mono">{lastOrderId}</span>
-                </p>
-                <p className="text-sm font-bold text-black">
-                  Date: {new Date().toLocaleDateString()}
-                </p>
-                <p className="text-sm font-bold text-green-600 mt-1">
-                  STATUS: PAID
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                    Shipped to
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {user?.fullName || "Valued Customer"}
+                  </p>
+                  <p className="text-xs text-gray-700">
+                    {address.street || "—"}
+                  </p>
+                  <p className="text-xs text-gray-700">
+                    {[address.city, address.zip].filter(Boolean).join(", ")}
+                  </p>
+                  <p className="text-xs text-gray-700">
+                    {address.country || "Turkey"}
+                  </p>
+                </div>
+
+                <div className="space-y-2 text-right">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                    Order details
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Order #
+                    <span className="ml-1 font-mono font-semibold text-gray-900">
+                      {lastOrderId}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Date{" "}
+                    <span className="ml-1 font-semibold text-gray-900">
+                      {new Date().toLocaleDateString()}
+                    </span>
+                  </p>
+                  <p className="inline-flex items-center justify-end gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    Paid
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-4 flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                    Total paid
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Includes all items in your bag at checkout.
+                  </p>
+                </div>
+                <p className="text-2xl sm:text-3xl font-semibold text-gray-900">
+                  ${finalTotal.toFixed(2)}
                 </p>
               </div>
-            </div>
 
-            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mb-8 flex justify-between items-center">
-              <span className="text-lg font-bold text-black">
-                TOTAL PAID
-              </span>
-              <span className="text-3xl font-extrabold text-black">
-                ${finalTotal.toFixed(2)}
-              </span>
-            </div>
-
-            <div className="text-center">
-              <button
-                onClick={() => router.push("/products")}
-                className="bg-black text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg"
-              >
-                Continue Shopping
-              </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <button
+                  onClick={() => router.push("/products")}
+                  className="inline-flex items-center justify-center rounded-full bg-black px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white hover:bg-gray-900 transition-all active:scale-[0.97]"
+                >
+                  Continue shopping
+                </button>
+                <p className="text-[11px] text-gray-500">
+                  You can review this order anytime in{" "}
+                  <span className="font-semibold text-gray-800">
+                    My Orders
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -361,18 +465,22 @@ export default function CartPage() {
     );
   }
 
-  // === MAIN CART UI ===
+  // === MAIN CART UI (Steps 1–3) ===
   return (
     <SiteLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 py-6">
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
               Sneaks-up
             </p>
             <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              Your Cart
+              Your bag
             </h1>
+            <p className="text-xs text-gray-500 mt-1">
+              Review your picks, lock in shipping, then secure the drop.
+            </p>
           </div>
           <Link
             href="/products"
@@ -382,6 +490,35 @@ export default function CartPage() {
           </Link>
         </div>
 
+        {/* Stepper */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]">
+          {stepConfig.map((step, idx) => (
+            <div key={step.id} className="flex items-center gap-3">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold ${
+                  isStepActive(step.id) || isStepComplete(step.id)
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-gray-500 border-gray-300"
+                }`}
+              >
+                {step.id}
+              </div>
+              <span
+                className={
+                  isStepActive(step.id) || isStepComplete(step.id)
+                    ? "text-gray-900"
+                    : "text-gray-400"
+                }
+              >
+                {step.label}
+              </span>
+              {idx < stepConfig.length - 1 && (
+                <div className="h-px w-6 bg-gray-200" />
+              )}
+            </div>
+          ))}
+        </div>
+
         {message && (
           <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-700">
             {message}
@@ -389,9 +526,9 @@ export default function CartPage() {
         )}
 
         {enrichedItems.length === 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-3 pt-4">
             <p className="text-sm text-gray-600">
-              Your cart is empty.
+              Your bag is empty. Once you add a pair, it will show up here.
             </p>
             <Link
               href="/products"
@@ -401,8 +538,8 @@ export default function CartPage() {
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col md:flex-row gap-8">
-            {/* LEFT SIDE */}
+          <div className="flex flex-col md:flex-row gap-8 pt-2">
+            {/* LEFT SIDE: ITEMS + ADDRESS */}
             <div className="w-full md:w-2/3 space-y-6">
               {/* PRODUCT LIST */}
               <div className="space-y-3">
@@ -426,34 +563,39 @@ export default function CartPage() {
                             <img
                               src={imageUrl}
                               alt={p?.name}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           ) : (
                             <span className="text-[9px] uppercase tracking-[0.22em] text-gray-400">
-                              No Image
+                              Sneaks-up
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="flex-1 flex flex-col gap-2">
                         <div className="flex items-start justify-between gap-2">
-                          <div>
+                          <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-gray-900">
                               {p?.name}
                             </p>
                             <p className="text-[11px] text-gray-500">
                               ${price.toFixed(2)}
                             </p>
+                            {p?.description && (
+                              <p className="text-[11px] text-gray-400 line-clamp-2 max-w-xs">
+                                {p.description}
+                              </p>
+                            )}
                           </div>
                           <button
                             type="button"
                             onClick={() => handleRemove(ci.productId)}
-                            className="text-[10px] text-gray-500 hover:text-black underline"
+                            className="text-[10px] text-gray-500 hover:text-black underline underline-offset-2"
                           >
                             Remove
                           </button>
                         </div>
-                        <div className="flex items-center gap-3 pt-3">
+                        <div className="flex items-center gap-3 pt-2">
                           <button
                             onClick={() =>
                               handleUpdateQuantity(
@@ -461,11 +603,11 @@ export default function CartPage() {
                                 ci.quantity - 1
                               )
                             }
-                            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-black font-bold hover:bg-gray-300 transition"
+                            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-black text-lg leading-none font-bold hover:bg-gray-300 transition"
                           >
-                            -
+                            −
                           </button>
-                          <span className="text-base font-bold text-black min-w-[20px] text-center">
+                          <span className="text-base font-semibold text-gray-900 min-w-[20px] text-center">
                             {ci.quantity}
                           </span>
                           <button
@@ -475,7 +617,7 @@ export default function CartPage() {
                                 ci.quantity + 1
                               )
                             }
-                            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-black font-bold hover:bg-gray-300 transition"
+                            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-black text-lg leading-none font-bold hover:bg-gray-300 transition"
                           >
                             +
                           </button>
@@ -488,26 +630,30 @@ export default function CartPage() {
 
               {/* ADDRESS FORM (Step 2+) */}
               {checkoutStep >= 2 && (
-                <div className="bg-white p-8 rounded-[2rem] border border-gray-200 shadow-sm">
-                  <h3 className="text-xl font-bold text-black mb-6 flex items-center gap-2">
-                    <span>📍</span> Shipping Address
+                <div className="bg-white rounded-[2rem] border border-gray-200 shadow-sm px-4 py-5 sm:px-6 sm:py-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <span>📍</span>
+                      Shipping address
+                    </h3>
                     {checkoutStep > 2 && (
-                      <span className="text-green-600 text-xs ml-auto font-bold uppercase tracking-wider">
-                        ✓ Confirmed
+                      <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 border border-emerald-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Confirmed
                       </span>
                     )}
-                  </h3>
+                  </div>
 
                   <div
                     className={`space-y-5 ${
                       checkoutStep > 2
-                        ? "opacity-50 pointer-events-none"
+                        ? "opacity-60 pointer-events-none"
                         : ""
                     }`}
                   >
                     <div>
-                      <label className="block text-xs font-bold text-black uppercase tracking-widest mb-2">
-                        Street Address
+                      <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-[0.2em] mb-2">
+                        Street address
                       </label>
                       <input
                         type="text"
@@ -515,12 +661,12 @@ export default function CartPage() {
                         value={address.street}
                         onChange={handleAddressChange}
                         placeholder="123 Sneaker St, Apt 4"
-                        className="w-full p-4 rounded-xl border border-gray-300 bg-white text-black font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-black uppercase tracking-widest mb-2">
+                        <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-[0.2em] mb-2">
                           City
                         </label>
                         <input
@@ -528,13 +674,13 @@ export default function CartPage() {
                           name="city"
                           value={address.city}
                           onChange={handleAddressChange}
-                          placeholder="XYZ"
-                          className="w-full p-4 rounded-xl border border-gray-300 bg-white text-black font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
+                          placeholder="Istanbul"
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-black uppercase tracking-widest mb-2">
-                          Postal Code
+                        <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-[0.2em] mb-2">
+                          Postal code
                         </label>
                         <input
                           type="text"
@@ -542,7 +688,7 @@ export default function CartPage() {
                           value={address.zip}
                           onChange={handleAddressChange}
                           placeholder="34000"
-                          className="w-full p-4 rounded-xl border border-gray-300 bg-white text-black font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:ring-2 focus:ring-black outline-none"
                         />
                       </div>
                     </div>
@@ -553,21 +699,39 @@ export default function CartPage() {
 
             {/* RIGHT SIDE: SUMMARY & ACTIONS */}
             <div className="w-full md:w-1/3 h-fit md:sticky md:top-10">
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                <h3 className="text-lg font-bold mb-4 text-gray-900">
-                  Order Summary
-                </h3>
-                <div className="flex justify-between mb-2 text-sm text-gray-600">
-                  <span>Subtotal</span>
-                  <span>${cartTotal.toFixed(2)}</span>
+              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Order summary
+                  </h3>
+                  <span className="text-[11px] text-gray-500">
+                    {enrichedItems.length} item
+                    {enrichedItems.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
-                <div className="flex justify-between mb-6 font-bold text-lg text-gray-900 border-t pt-2">
-                  <span>Total</span>
-                  <span>${cartTotal.toFixed(2)}</span>
+
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>${cartTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-400 text-[11px]">
+                    <span>Shipping</span>
+                    <span>Calculated at dispatch</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">
+                    Total
+                  </span>
+                  <span className="text-lg font-semibold text-gray-900">
+                    ${cartTotal.toFixed(2)}
+                  </span>
                 </div>
 
                 {paymentError && (
-                  <p className="text-red-600 text-xs font-bold bg-red-50 p-3 mb-4 rounded-lg border border-red-100">
+                  <p className="text-red-600 text-xs font-semibold bg-red-50 p-3 rounded-xl border border-red-100">
                     {paymentError}
                   </p>
                 )}
@@ -576,9 +740,9 @@ export default function CartPage() {
                 {checkoutStep === 1 && (
                   <button
                     onClick={handleProceedToAddress}
-                    className="w-full py-3 rounded-full bg-black text-white text-xs font-bold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all shadow-lg"
+                    className="w-full py-3 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all shadow-lg"
                   >
-                    {user ? "Proceed to Shipping" : "Log in to Checkout"}
+                    {user ? "Proceed to shipping" : "Log in to checkout"}
                   </button>
                 )}
 
@@ -587,45 +751,45 @@ export default function CartPage() {
                   <>
                     <button
                       onClick={handleProceedToPayment}
-                      className="w-full py-3 rounded-full bg-black text-white text-xs font-bold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all shadow-lg mb-2"
+                      className="w-full py-3 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-all shadow-lg mb-2"
                     >
-                      Confirm Address
+                      Confirm address
                     </button>
                     <button
                       onClick={() => setCheckoutStep(1)}
-                      className="w-full py-2 text-xs font-bold text-gray-500 hover:text-black underline"
+                      className="w-full py-2 text-[11px] font-semibold text-gray-500 hover:text-black underline underline-offset-2"
                     >
-                      Back to Cart
+                      Back to bag
                     </button>
                   </>
                 )}
 
                 {/* STEP 3: PAYMENT */}
                 {checkoutStep === 3 && (
-                  <div className="space-y-4 pt-2 border-t mt-2">
-                    <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                      <span>💳</span> Payment Details
+                  <div className="space-y-4 pt-2 border-t border-gray-100 mt-2">
+                    <h4 className="font-semibold text-xs text-gray-900 flex items-center gap-2 uppercase tracking-[0.18em]">
+                      <span>💳</span> Payment details
                     </h4>
 
-                    <div>
-                      <label className="block text-xs font-bold text-black mb-1">
-                        Card Holder Name
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-gray-700">
+                        Card holder name
                       </label>
                       <input
                         type="text"
                         value={cardName}
                         onChange={handleNameChange}
                         placeholder="e.g. John Doe"
-                        className="w-full p-2 border border-gray-300 rounded-lg text-sm text-black focus:outline-none focus:ring-2 focus:ring-black font-medium"
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
                       />
                       <p className="text-[10px] text-gray-500 mt-1">
-                        Letters only
+                        Letters only – matches card.
                       </p>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-black mb-1">
-                        Card Number
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-gray-700">
+                        Card number
                       </label>
                       <input
                         type="text"
@@ -633,26 +797,26 @@ export default function CartPage() {
                         onChange={handleCardNumberChange}
                         placeholder="0000 0000 0000 0000"
                         maxLength={16}
-                        className="w-full p-2 border border-gray-300 rounded-lg text-sm text-black focus:outline-none focus:ring-2 focus:ring-black font-medium"
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
                       />
                       <p className="text-[10px] text-gray-500 mt-1">
-                        Integers only
+                        Numbers only – demo checkout, no real charge.
                       </p>
                     </div>
 
                     <button
                       onClick={finalizeOrder}
                       disabled={placingOrder}
-                      className="w-full py-3 rounded-full bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition-colors disabled:bg-gray-400 shadow-md mt-2"
+                      className="w-full py-3 rounded-full bg-emerald-600 text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-emerald-700 transition-colors disabled:bg-gray-400 shadow-md mt-1"
                     >
-                      {placingOrder ? "Processing..." : "Pay Now"}
+                      {placingOrder ? "Processing…" : "Pay now"}
                     </button>
 
                     <button
                       onClick={() => setCheckoutStep(2)}
-                      className="w-full py-2 text-xs font-bold text-gray-500 hover:text-black underline"
+                      className="w-full py-2 text-[11px] font-semibold text-gray-500 hover:text-black underline underline-offset-2"
                     >
-                      Back to Address
+                      Back to shipping
                     </button>
                   </div>
                 )}

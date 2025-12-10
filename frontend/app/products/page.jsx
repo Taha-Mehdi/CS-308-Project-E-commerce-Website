@@ -8,16 +8,22 @@ import { useAuth } from "../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-// Optional mapping for categories if you use categoryId
-const CATEGORY_LABELS = {
-  1: "Sneakers",
-  2: "Streetwear",
-  3: "Accessories",
-};
+// Fixed category set – must match backend IDs
+const CATEGORY_OPTIONS = [
+  { id: 1, label: "Low Top" },
+  { id: 2, label: "Mid Top" },
+  { id: 3, label: "High Top" },
+];
+
+const CATEGORY_LABELS = CATEGORY_OPTIONS.reduce((acc, opt) => {
+  acc[opt.id] = opt.label;
+  return acc;
+}, {});
 
 function getCategoryLabel(categoryId) {
-  if (!categoryId) return "Uncategorized";
-  return CATEGORY_LABELS[categoryId] || `Category #${categoryId}`;
+  const num = Number(categoryId);
+  if (!num) return "Uncategorized";
+  return CATEGORY_LABELS[num] || `Category #${num}`;
 }
 
 export default function ProductsPage() {
@@ -31,7 +37,7 @@ export default function ProductsPage() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("featured");
+  const [sortBy, setSortBy] = useState("popularity"); // no "featured"
 
   const [addingId, setAddingId] = useState(null);
 
@@ -137,19 +143,6 @@ export default function ProductsPage() {
     loadProducts();
   }, []);
 
-  // Build category list from products
-  const categoryOptions = useMemo(() => {
-    const ids = new Set();
-    products.forEach((p) => {
-      if (p.categoryId != null) ids.add(p.categoryId);
-    });
-    const arr = Array.from(ids).sort((a, b) => a - b);
-    return arr.map((id) => ({
-      id,
-      label: getCategoryLabel(id),
-    }));
-  }, [products]);
-
   // Filter + sort products
   const filteredAndSorted = useMemo(() => {
     let list = [...products];
@@ -196,6 +189,7 @@ export default function ProductsPage() {
         );
         break;
       case "popularity":
+      default:
         // Simple popularity approximation:
         // use optional p.popularity if exists, else fallback to newest (id desc)
         list.sort((a, b) => {
@@ -207,10 +201,6 @@ export default function ProductsPage() {
           return bScore - aScore;
         });
         break;
-      case "featured":
-      default:
-        // leave as is (backend order)
-        break;
     }
 
     return list;
@@ -221,7 +211,7 @@ export default function ProductsPage() {
     setMinPrice("");
     setMaxPrice("");
     setCategoryFilter("all");
-    setSortBy("featured");
+    setSortBy("popularity");
   }
 
   async function handleAddToCart(product) {
@@ -392,23 +382,22 @@ export default function ProductsPage() {
               className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/40"
             >
               <option value="all">All categories</option>
-              {categoryOptions.map((cat) => (
-                <option key={cat.id} value={cat.id}>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat.id} value={String(cat.id)}>
                   {cat.label}
                 </option>
               ))}
             </select>
 
-            {/* Sort dropdown */}
+            {/* Sort dropdown (no "Featured") */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               className="h-9 rounded-full border border-gray-300 bg-white px-3 text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-black/40"
             >
-              <option value="featured">Featured</option>
+              <option value="popularity">Most popular</option>
               <option value="priceAsc">Price: Low to High</option>
               <option value="priceDesc">Price: High to Low</option>
-              <option value="popularity">Most Popular</option>
             </select>
 
             <button
