@@ -78,7 +78,12 @@ export default function LoginPage() {
         return;
       }
 
-      // 2. SAVE SESSION (AuthContext)
+      // 2. SAVE SESSION & REDIRECT
+      // We rely on the global AuthContext (triggered by login()) to detect
+      // the guestCart and merge it automatically.
+      // This prevents the "Double Quantity" bug caused by manual merging here.
+      localStorage.setItem("token", data.token);
+
       try {
         login(data.token, data.user);
       } catch (err) {
@@ -88,50 +93,6 @@ export default function LoginPage() {
         return;
       }
 
-      // ---------------------------------------------------------
-      // 3. MERGE GUEST CART TO BACKEND (The New Logic)
-      // ---------------------------------------------------------
-      try {
-        const guestCartRaw = localStorage.getItem("guestCart");
-        if (guestCartRaw) {
-          const guestCart = JSON.parse(guestCartRaw);
-
-          if (Array.isArray(guestCart) && guestCart.length > 0) {
-            // Loop through each guest item and send it to the server
-            // We use Promise.all to make it faster (parallel requests)
-            await Promise.all(
-                guestCart.map((item) =>
-                    fetch(`${apiBase}/cart/add`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${data.token}`, // Use the NEW token
-                      },
-                      body: JSON.stringify({
-                        productId: item.productId,
-                        quantity: item.quantity,
-                      }),
-                    })
-                )
-            );
-
-            // Clear the guest cart so it doesn't duplicate next time
-            localStorage.removeItem("guestCart");
-
-            // Dispatch event to update navbar if it's listening
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new Event("cart-updated"));
-            }
-          }
-        }
-      } catch (syncErr) {
-        // If syncing fails, we log it but do NOT stop the user from logging in.
-        // They should still be allowed to enter the site.
-        console.error("Failed to sync guest cart:", syncErr);
-      }
-      // ---------------------------------------------------------
-
-      // 4. REDIRECT
       router.push(nextPath);
     } catch (err) {
       console.error("Login error:", err);
