@@ -1,7 +1,8 @@
 const express = require('express');
 const { z } = require('zod');
 const { db } = require('../db');
-const { orders, orderItems, products, users } = require('../db/schema');
+// 1. ADDED 'cartItems' TO IMPORTS
+const { orders, orderItems, products, users, cartItems } = require('../db/schema');
 const { eq, inArray } = require('drizzle-orm');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 const { sendInvoiceEmail } = require('../utils/email');
@@ -17,7 +18,6 @@ const orderItemInputSchema = z.object({
 
 const orderCreateSchema = z.object({
   items: z.array(orderItemInputSchema).min(1),
-  
   shippingAddress: z.string().min(5).max(500).optional(),
 });
 
@@ -31,21 +31,21 @@ router.post('/', authMiddleware, async (req, res) => {
     const parsed = orderCreateSchema.safeParse(req.body);
     if (!parsed.success) {
       return res
-        .status(400)
-        .json({ message: 'Invalid data', errors: parsed.error.flatten() });
+          .status(400)
+          .json({ message: 'Invalid data', errors: parsed.error.flatten() });
     }
 
     const { items, shippingAddress } = parsed.data;
     const userId = req.user.id;
 
-    // Wrap entire order creation + stock updates in a transaction
+    // Wrap entire order creation + stock updates + cart clearing in a transaction
     const result = await db.transaction(async (tx) => {
       const productIds = [...new Set(items.map((i) => i.productId))];
 
       const dbProducts = await tx
-        .select()
-        .from(products)
-        .where(inArray(products.id, productIds));
+          .select()
+          .from(products)
+          .where(inArray(products.id, productIds));
 
       if (dbProducts.length !== productIds.length) {
         throw new Error('One or more products not found');
@@ -72,28 +72,28 @@ router.post('/', authMiddleware, async (req, res) => {
 
       // Load user info (for shipping fallback + invoice)
       const userRows = await tx
-        .select()
-        .from(users)
-        .where(eq(users.id, userId));
+          .select()
+          .from(users)
+          .where(eq(users.id, userId));
 
       const userInfo = userRows[0];
 
       // Use provided shipping address or fallback to user's address (if any)
       const finalShippingAddress =
-        shippingAddress ||
-        userInfo?.address ||
-        '';
+          shippingAddress ||
+          userInfo?.address ||
+          '';
 
       // Requirement 3: order enters the flow as "processing"
       const insertedOrders = await tx
-        .insert(orders)
-        .values({
-          userId,
-          status: 'processing',
-          total: total.toFixed(2),
-          shippingAddress: finalShippingAddress,
-        })
-        .returning();
+          .insert(orders)
+          .values({
+            userId,
+            status: 'processing',
+            total: total.toFixed(2),
+            shippingAddress: finalShippingAddress,
+          })
+          .returning();
 
       const order = insertedOrders[0];
 
@@ -115,10 +115,18 @@ router.post('/', authMiddleware, async (req, res) => {
         const p = productMap.get(item.productId);
         const newStock = p.stock - item.quantity;
         await tx
-          .update(products)
-          .set({ stock: newStock })
-          .where(eq(products.id, item.productId));
+            .update(products)
+            .set({ stock: newStock })
+            .where(eq(products.id, item.productId));
       }
+
+      // ============================================================
+      // 2. THE FIX: EMPTY THE CART
+      // We do this inside the transaction. If the order fails, the cart stays.
+      // If the order succeeds, the cart is wiped immediately.
+      // ============================================================
+      await tx.delete(cartItems).where(eq(cartItems.userId, userId));
+
 
       // Return data needed outside the transaction (for invoice email)
       return { order, orderItemsToInsert, userInfo };
@@ -165,9 +173,9 @@ router.get('/my', authMiddleware, async (req, res) => {
     const userId = req.user.id;
 
     const userOrders = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.userId, userId));
+        .select()
+        .from(orders)
+        .where(eq(orders.userId, userId));
 
     if (userOrders.length === 0) {
       return res.json([]);
@@ -176,11 +184,10 @@ router.get('/my', authMiddleware, async (req, res) => {
     const orderIds = userOrders.map((o) => o.id);
 
     const items = await db
-      .select()
-      .from(orderItems)
-      .where(inArray(orderItems.orderId, orderIds));
+        .select()
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, orderIds));
 
-    // For the frontend "order history" page, this shape is convenient:
     return res.json({
       orders: userOrders,
       items,
@@ -210,18 +217,18 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
     const orderId = Number(req.params.id);
 
     const foundOrders = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId));
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId));
 
     if (foundOrders.length === 0) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
     const items = await db
-      .select()
-      .from(orderItems)
-      .where(eq(orderItems.orderId, orderId));
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId));
 
     return res.json({
       order: foundOrders[0],
@@ -241,17 +248,17 @@ router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
 
     if (!parsed.success) {
       return res
-        .status(400)
-        .json({ message: 'Invalid status', errors: parsed.error.flatten() });
+          .status(400)
+          .json({ message: 'Invalid status', errors: parsed.error.flatten() });
     }
 
     const { status } = parsed.data;
 
     const updated = await db
-      .update(orders)
-      .set({ status })
-      .where(eq(orders.id, orderId))
-      .returning();
+        .update(orders)
+        .set({ status })
+        .where(eq(orders.id, orderId))
+        .returning();
 
     if (updated.length === 0) {
       return res.status(404).json({ message: 'Order not found' });
