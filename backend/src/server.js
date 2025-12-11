@@ -8,6 +8,8 @@ const path = require("path");
 const { ensureDefaultCategories } = require("./utils/ensureCategories");
 
 const { pool } = require("./db");
+const http = require("http");
+const { Server } = require("socket.io");
 
 const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
@@ -87,8 +89,124 @@ async function ensureDefaultRoles() {
   }
 }
 
-// Start server
-app.listen(PORT, () => {
+// Create HTTP server and attach Socket.io
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*",              // allow all origins for testing
+    methods: ["GET", "POST"],
+  },
+});
+
+
+// In-memory support chat state
+const activeChats = new Map(); // chatId -> { chatId, customerName, createdAt }
+
+const supportNamespace = io.of("/support");
+
+supportNamespace.on("connection", (socket) => {
+  const role = socket.handshake.query.role || "customer";
+  const displayName = socket.handshake.query.name || "Guest";
+
+  console.log(`[support] socket connected: ${socket.id} (role=${role})`);
+
+  if (role === "admin") {
+    // Admin joins special room so we can broadcast updates to all admins
+    socket.join("admins");
+
+    // Send current active chats to this admin
+    socket.emit(
+      "active_chats",
+      Array.from(activeChats.values())
+    );
+  } else {
+    // Customer flow
+    const chatId = socket.handshake.query.chatId || socket.id;
+
+    socket.join(chatId);
+
+    const chatInfo = {
+      chatId,
+      customerName: displayName,
+      createdAt: new Date().toISOString(),
+    };
+
+    activeChats.set(chatId, chatInfo);
+
+    // Tell this customer their chat info
+    socket.emit("chat_joined", chatInfo);
+
+    // Notify all admins that active chats changed
+    supportNamespace.to("admins").emit(
+      "active_chats",
+      Array.from(activeChats.values())
+    );
+  }
+
+    // ⭐ NEW: admin joins a chat room
+  if (role === "admin") {
+    socket.on("admin_join_chat", ({ chatId }) => {
+      if (!chatId) return;
+      console.log(`[support] admin ${socket.id} joined chat ${chatId}`);
+      socket.join(chatId);
+      socket.emit("joined_chat", { chatId });
+    });
+  }
+
+  // Customer sends a message
+  socket.on("customer_message", ({ chatId, message }) => {
+    if (!chatId || !message) return;
+
+    const payload = {
+      chatId,
+      from: "customer",
+      message,
+      at: new Date().toISOString(),
+    };
+
+    // 1) Send to everyone in that chat room (customer + joined admins)
+    supportNamespace.to(chatId).emit("message", payload);
+  });
+
+
+  // Admin sends a message
+  socket.on("admin_message", ({ chatId, message }) => {
+    if (!chatId || !message) return;
+
+    const payload = {
+      chatId,
+      from: "admin",
+      message,
+      at: new Date().toISOString(),
+    };
+
+    supportNamespace.to(chatId).emit("message", payload);
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`[support] socket disconnected: ${socket.id} (role=${role})`);
+
+    // If a customer disconnects, remove their chat and notify admins
+    if (role !== "admin") {
+      const possibleChatId =
+        socket.handshake.query.chatId || socket.id;
+
+      if (activeChats.has(possibleChatId)) {
+        activeChats.delete(possibleChatId);
+
+        supportNamespace.to("admins").emit(
+          "active_chats",
+          Array.from(activeChats.values())
+        );
+      }
+    }
+  });
+});
+
+// Start server with Socket.io attached
+server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   ensureDefaultRoles();
 });
+
