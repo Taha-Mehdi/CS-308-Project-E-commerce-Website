@@ -1,77 +1,83 @@
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
+
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || typeof authHeader !== "string") return null;
+
+  // Accept: "Bearer <token>" with any extra whitespace
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  const token = match[1].trim();
+  return token.length ? token : null;
+}
 
 function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization || '';
+  const token = getBearerToken(req);
 
-  const [scheme, token] = authHeader.split(' ');
-
-  if (scheme !== 'Bearer' || !token) {
+  if (!token) {
     return res
-        .status(401)
-        .json({ message: 'Missing or invalid Authorization header' });
+      .status(401)
+      .json({ message: "Missing or invalid Authorization header" });
   }
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     // payload: { id, email, roleId, type: 'access' }
     req.user = payload;
-    next();
+    return next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      // less noisy log
+    if (err && err.name === "TokenExpiredError") {
       console.warn(
-          'JWT expired for request:',
-          req.method,
-          req.originalUrl,
-          'expiredAt:',
-          err.expiredAt
+        "JWT expired for request:",
+        req.method,
+        req.originalUrl,
+        "expiredAt:",
+        err.expiredAt
       );
-      return res.status(401).json({ message: 'Token expired' });
+      return res.status(401).json({ message: "Token expired" });
     }
 
-    console.error('JWT verification failed:', err);
-    return res.status(401).json({ message: 'Invalid token' });
+    console.error("JWT verification failed:", err);
+    return res.status(401).json({ message: "Invalid token" });
   }
 }
 
-// NEW: Checks for token, but allows guests to pass through (req.user will be null)
+// Checks for token, but allows guests to pass through (req.user will be null)
 function optionalAuthMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
+  const token = getBearerToken(req);
 
-  // If no header or bad format, treat as guest (no error)
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     req.user = null;
     return next();
   }
 
-  const token = authHeader.split(' ')[1];
-
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // Logged in user found
-    next();
+    req.user = payload;
+    return next();
   } catch (err) {
-    // If token is expired or invalid, just treat them as guest
+    // Treat invalid/expired token as guest
     req.user = null;
-    next();
+    return next();
   }
 }
 
 // Very simple admin check: assumes roleId === 1 is admin
 function requireAdmin(req, res, next) {
   if (!req.user) {
-    return res.status(401).json({ message: 'Not authenticated' });
+    return res.status(401).json({ message: "Not authenticated" });
   }
 
   if (req.user.roleId !== 1) {
-    return res.status(403).json({ message: 'Admin access required' });
+    return res.status(403).json({ message: "Admin access required" });
   }
 
-  next();
+  return next();
 }
 
 module.exports = {
   authMiddleware,
-  optionalAuthMiddleware, // <--- Exporting the new function
+  optionalAuthMiddleware,
   requireAdmin,
 };

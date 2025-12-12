@@ -5,11 +5,10 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
-const { ensureDefaultCategories } = require("./utils/ensureCategories");
-
-const { pool } = require("./db");
 const http = require("http");
 const { Server } = require("socket.io");
+
+const { pool } = require("./db");
 
 const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
@@ -19,24 +18,47 @@ const { router: invoiceRoutes } = require("./routes/invoice");
 const reviewsRoutes = require("./routes/reviews");
 
 const app = express();
-
 const PORT = process.env.PORT || 4000;
+
+// If you ever run behind a proxy (Render/Heroku/Nginx), rate-limit needs this.
+// Safe locally too.
+app.set("trust proxy", 1);
 
 // Serve uploaded product images
 const uploadDir = path.join(__dirname, "..", "uploads");
 app.use("/uploads", express.static(uploadDir));
 
-// Rate limiter 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-});
-
 // Global middlewares
 app.use(helmet());
-app.use(cors());
+
+// CORS: keep it open if you want, but this version is safer for dev.
+// If you use cookies, you must set credentials: true and specify origin explicitly.
+app.use(
+  cors({
+    origin: true, // reflects request origin
+    credentials: true,
+  })
+);
+
 app.use(express.json());
-app.use(limiter);
+
+// ✅ Rate limiter
+// - In development: disabled (so React dev / HMR won’t trigger 429)
+// - In production: enabled
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // adjust as needed
+    standardHeaders: true, // adds RateLimit-* headers
+    legacyHeaders: false,
+    message: { message: "Too many requests, please try again later." },
+    // Optional: ignore localhost/internal traffic if needed
+    // skip: (req) => req.ip === "127.0.0.1" || req.ip === "::1",
+  });
+
+  // Apply only to API routes (not uploads/health) to reduce accidental blocks
+  app.use(["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews"], limiter);
+}
 
 // Health check routes
 app.get("/health", (req, res) => {
@@ -94,15 +116,13 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",              // allow all origins for testing
+    origin: "*", // ok for testing
     methods: ["GET", "POST"],
   },
 });
 
-
 // In-memory support chat state
 const activeChats = new Map(); // chatId -> { chatId, customerName, createdAt }
-
 const supportNamespace = io.of("/support");
 
 supportNamespace.on("connection", (socket) => {
@@ -112,16 +132,9 @@ supportNamespace.on("connection", (socket) => {
   console.log(`[support] socket connected: ${socket.id} (role=${role})`);
 
   if (role === "admin") {
-    // Admin joins special room so we can broadcast updates to all admins
     socket.join("admins");
-
-    // Send current active chats to this admin
-    socket.emit(
-      "active_chats",
-      Array.from(activeChats.values())
-    );
+    socket.emit("active_chats", Array.from(activeChats.values()));
   } else {
-    // Customer flow
     const chatId = socket.handshake.query.chatId || socket.id;
 
     socket.join(chatId);
@@ -134,17 +147,12 @@ supportNamespace.on("connection", (socket) => {
 
     activeChats.set(chatId, chatInfo);
 
-    // Tell this customer their chat info
     socket.emit("chat_joined", chatInfo);
 
-    // Notify all admins that active chats changed
-    supportNamespace.to("admins").emit(
-      "active_chats",
-      Array.from(activeChats.values())
-    );
+    supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
   }
 
-    // ⭐ NEW: admin joins a chat room
+  // Admin joins a chat room
   if (role === "admin") {
     socket.on("admin_join_chat", ({ chatId }) => {
       if (!chatId) return;
@@ -165,10 +173,8 @@ supportNamespace.on("connection", (socket) => {
       at: new Date().toISOString(),
     };
 
-    // 1) Send to everyone in that chat room (customer + joined admins)
     supportNamespace.to(chatId).emit("message", payload);
   });
-
 
   // Admin sends a message
   socket.on("admin_message", ({ chatId, message }) => {
@@ -187,18 +193,13 @@ supportNamespace.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`[support] socket disconnected: ${socket.id} (role=${role})`);
 
-    // If a customer disconnects, remove their chat and notify admins
     if (role !== "admin") {
-      const possibleChatId =
-        socket.handshake.query.chatId || socket.id;
+      const possibleChatId = socket.handshake.query.chatId || socket.id;
 
       if (activeChats.has(possibleChatId)) {
         activeChats.delete(possibleChatId);
 
-        supportNamespace.to("admins").emit(
-          "active_chats",
-          Array.from(activeChats.values())
-        );
+        supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
       }
     }
   });
@@ -209,4 +210,3 @@ server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   ensureDefaultRoles();
 });
-

@@ -47,7 +47,7 @@ export default function AdminProductsPage() {
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
-  const [editStock, setEditStock] = useState("");
+  const [editStock, setEditStock] = useState(""); // ✅ already existed; now editable in UI
   const [editDescription, setEditDescription] = useState("");
   const [editModel, setEditModel] = useState("");
   const [editSerialNumber, setEditSerialNumber] = useState("");
@@ -115,9 +115,7 @@ export default function AdminProductsPage() {
 
           if (revRes.ok) {
             const reviewsData = await revRes.json();
-            setPendingReviews(
-              Array.isArray(reviewsData) ? reviewsData : []
-            );
+            setPendingReviews(Array.isArray(reviewsData) ? reviewsData : []);
           }
         }
       } catch (err) {
@@ -199,11 +197,7 @@ export default function AdminProductsPage() {
       // If a new image file is selected, upload it
       if (newImageFile && created.id) {
         try {
-          const imgRes = await uploadProductImage(
-            created.id,
-            newImageFile,
-            token
-          );
+          const imgRes = await uploadProductImage(created.id, newImageFile, token);
           if (imgRes && imgRes.product) {
             finalProduct = imgRes.product;
           }
@@ -267,9 +261,7 @@ export default function AdminProductsPage() {
       }
 
       if (data?.product) {
-        setProducts((prev) =>
-          prev.map((p) => (p.id === productId ? data.product : p))
-        );
+        setProducts((prev) => prev.map((p) => (p.id === productId ? data.product : p)));
       }
 
       return data;
@@ -286,9 +278,7 @@ export default function AdminProductsPage() {
 
   async function handleReviewAction(id, action) {
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) return;
 
     try {
@@ -324,16 +314,14 @@ export default function AdminProductsPage() {
     setEditingId(p.id);
     setEditName(p.name || "");
     setEditPrice(String(p.price ?? ""));
-    setEditStock(String(p.stock ?? ""));
+    setEditStock(String(p.stock ?? "")); // ✅ already
     setEditDescription(p.description || "");
     setEditModel(p.model || "");
     setEditSerialNumber(p.serialNumber || "");
     setEditWarrantyStatus(p.warrantyStatus || "");
     setEditDistributorInfo(p.distributorInfo || "");
     setEditCategory(
-      p.categoryId !== null && p.categoryId !== undefined
-        ? String(p.categoryId)
-        : ""
+      p.categoryId !== null && p.categoryId !== undefined ? String(p.categoryId) : ""
     );
   }
 
@@ -353,12 +341,23 @@ export default function AdminProductsPage() {
   async function handleSaveEdit(productId) {
     if (!ensureAdmin()) return;
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
     if (!token) {
       setMessage("Please login as admin.");
+      return;
+    }
+
+    // ✅ Validate quantity/stock (non-negative integer)
+    const stockNumber = Number(editStock);
+    if (!Number.isInteger(stockNumber) || stockNumber < 0) {
+      setMessage("Stock must be a valid non-negative integer.");
+      return;
+    }
+
+    const priceNumber = Number(editPrice);
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      setMessage("Price must be a valid number.");
       return;
     }
 
@@ -376,8 +375,8 @@ export default function AdminProductsPage() {
         body: JSON.stringify({
           name: editName,
           description: editDescription,
-          price: Number(editPrice),
-          stock: Number(editStock),
+          price: priceNumber,
+          stock: stockNumber, // ✅ quantity/stock is now properly editable
           isActive: true,
           model: editModel || "",
           serialNumber: editSerialNumber || "",
@@ -386,11 +385,10 @@ export default function AdminProductsPage() {
           categoryId,
         }),
       });
+
       if (res.ok) {
         const data = await res.json();
-        setProducts((prev) =>
-          prev.map((p) => (p.id === productId ? data : p))
-        );
+        setProducts((prev) => prev.map((p) => (p.id === productId ? data : p)));
         cancelEdit();
         setMessage("Product updated.");
       } else {
@@ -411,9 +409,7 @@ export default function AdminProductsPage() {
     if (!confirm("Delete this product?")) return;
 
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
     if (!token) {
       setMessage("Please login as admin.");
@@ -480,13 +476,9 @@ export default function AdminProductsPage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
                 Pending reviews
               </p>
-              <p className="text-xs text-gray-500">
-                Approve comments to make them visible.
-              </p>
+              <p className="text-xs text-gray-500">Approve comments to make them visible.</p>
             </div>
-            <span className="text-[11px] text-gray-500">
-              {pendingReviews.length} waiting
-            </span>
+            <span className="text-[11px] text-gray-500">{pendingReviews.length} waiting</span>
           </div>
 
           {pendingReviews.length === 0 ? (
@@ -500,41 +492,29 @@ export default function AdminProductsPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-xs font-semibold text-gray-900">
-                        User ID: {rev.userId}
-                      </p>
-                      <p className="text-[11px] text-gray-500">
-                        Product ID: {rev.productId}
-                      </p>
+                      <p className="text-xs font-semibold text-gray-900">User ID: {rev.userId}</p>
+                      <p className="text-[11px] text-gray-500">Product ID: {rev.productId}</p>
                     </div>
                     <span className="text-[11px] text-amber-600 font-semibold">
                       {"★"
-                        .repeat(
-                          Math.max(1, Math.min(5, rev.rating || 1))
-                        )
+                        .repeat(Math.max(1, Math.min(5, rev.rating || 1)))
                         .padEnd(5, "☆")}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-700 mt-1 italic">
-                    "{rev.comment}"
-                  </p>
+                  <p className="text-xs text-gray-700 mt-1 italic">"{rev.comment}"</p>
 
                   <div className="flex items-center gap-2 mt-2">
                     <ActionButton
                       size="xs"
                       variant="success"
-                      onClick={() =>
-                        handleReviewAction(rev.id, "approved")
-                      }
+                      onClick={() => handleReviewAction(rev.id, "approved")}
                     >
                       Approve
                     </ActionButton>
                     <ActionButton
                       size="xs"
                       variant="outline"
-                      onClick={() =>
-                        handleReviewAction(rev.id, "rejected")
-                      }
+                      onClick={() => handleReviewAction(rev.id, "rejected")}
                     >
                       Reject
                     </ActionButton>
@@ -563,13 +543,10 @@ export default function AdminProductsPage() {
                 New drop
               </p>
               <p className="text-xs text-gray-500">
-                Add a new pair to the SNEAKS-UP catalog. Image is optional but
-                highly recommended.
+                Add a new pair to the SNEAKS-UP catalog. Image is optional but highly recommended.
               </p>
             </div>
-            <span className="text-[11px] text-gray-400">
-              Fields marked * are required
-            </span>
+            <span className="text-[11px] text-gray-400">Fields marked * are required</span>
           </div>
 
           {/* Name / Price / Stock / Category */}
@@ -711,9 +688,7 @@ export default function AdminProductsPage() {
                     <input
                       type="text"
                       value={newDistributorInfo}
-                      onChange={(e) =>
-                        setNewDistributorInfo(e.target.value)
-                      }
+                      onChange={(e) => setNewDistributorInfo(e.target.value)}
                       className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                       placeholder="e.g. Sneaks-Up TR"
                     />
@@ -730,14 +705,11 @@ export default function AdminProductsPage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) =>
-                    setNewImageFile(e.target.files?.[0] || null)
-                  }
+                  onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
                   className="text-[11px] text-gray-700 file:text-[11px] file:px-3 file:py-1.5 file:rounded-full file:border file:border-gray-300 file:bg-white file:text-gray-800 file:mr-3 file:hover:bg-gray-100"
                 />
                 <p className="text-[11px] text-gray-500 leading-snug">
-                  Optional. JPEG/PNG recommended. You can also upload or change
-                  imagery later from the product list.
+                  Optional. JPEG/PNG recommended. You can also upload or change imagery later from the product list.
                 </p>
               </div>
             </div>
@@ -769,9 +741,7 @@ export default function AdminProductsPage() {
           {loading ? (
             <p className="text-sm text-gray-500">Loading products…</p>
           ) : products.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No products yet. Start by creating your first drop above.
-            </p>
+            <p className="text-sm text-gray-500">No products yet. Start by creating your first drop above.</p>
           ) : (
             <div className="space-y-3">
               {products.map((p) => {
@@ -779,8 +749,7 @@ export default function AdminProductsPage() {
                 const priceNumber = Number(p.price || 0);
                 const imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
 
-                const activeLabel =
-                  p.isActive === false ? "Inactive" : "Active";
+                const activeLabel = p.isActive === false ? "Inactive" : "Active";
                 const activeClasses =
                   p.isActive === false
                     ? "bg-gray-200 text-gray-700"
@@ -825,16 +794,12 @@ export default function AdminProductsPage() {
                               accept="image/*"
                               className="hidden"
                               onChange={async (e) => {
-                                const file =
-                                  e.target.files?.[0] || null;
+                                const file = e.target.files?.[0] || null;
                                 if (!file) return;
                                 try {
                                   await uploadProductImage(p.id, file);
                                 } catch (err) {
-                                  console.error(
-                                    "Inline image upload error:",
-                                    err
-                                  );
+                                  console.error("Inline image upload error:", err);
                                 }
                               }}
                             />
@@ -856,9 +821,7 @@ export default function AdminProductsPage() {
                               <input
                                 type="text"
                                 value={editName}
-                                onChange={(e) =>
-                                  setEditName(e.target.value)
-                                }
+                                onChange={(e) => setEditName(e.target.value)}
                                 className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
                               />
                             ) : (
@@ -866,13 +829,12 @@ export default function AdminProductsPage() {
                                 {p.name}
                               </h2>
                             )}
-                            <p className="text-[11px] text-gray-500">
-                              ID: {p.id}
-                            </p>
+                            <p className="text-[11px] text-gray-500">ID: {p.id}</p>
                             <p className="text-[11px] text-gray-500">
                               Category: {getCategoryLabel(p.categoryId)}
                             </p>
                           </div>
+
                           <div className="text-right space-y-1">
                             <div>
                               <span className="text-xs font-semibold text-gray-900">
@@ -882,11 +844,21 @@ export default function AdminProductsPage() {
                                   : priceNumber.toFixed(2)}
                               </span>
                             </div>
+
                             <div className="flex justify-end">
                               {isEditing ? (
-                                <span className="text-[11px] text-gray-700 font-medium">
-                                  In stock: {editStock}
-                                </span>
+                                // ✅ CHANGED: stock is now editable in edit mode
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-gray-500">Stock:</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={editStock}
+                                    onChange={(e) => setEditStock(e.target.value)}
+                                    className="w-24 rounded-full border border-gray-300 bg-white px-3 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10 text-right"
+                                  />
+                                </div>
                               ) : (
                                 <StockBadge
                                   stock={p.stock}
@@ -907,18 +879,14 @@ export default function AdminProductsPage() {
                             {isEditing ? (
                               <textarea
                                 value={editDescription}
-                                onChange={(e) =>
-                                  setEditDescription(e.target.value)
-                                }
+                                onChange={(e) => setEditDescription(e.target.value)}
                                 rows={2}
                                 className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15 resize-none"
                               />
                             ) : (
                               <p className="text-xs text-gray-600 leading-relaxed">
                                 {p.description || (
-                                  <span className="italic text-gray-400">
-                                    No description set.
-                                  </span>
+                                  <span className="italic text-gray-400">No description set.</span>
                                 )}
                               </p>
                             )}
@@ -938,17 +906,14 @@ export default function AdminProductsPage() {
                                   <input
                                     type="text"
                                     value={editModel}
-                                    onChange={(e) =>
-                                      setEditModel(e.target.value)
-                                    }
+                                    onChange={(e) => setEditModel(e.target.value)}
                                     className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                                   />
                                 ) : (
-                                  <p className="text-[11px] text-gray-800">
-                                    {p.model || "—"}
-                                  </p>
+                                  <p className="text-[11px] text-gray-800">{p.model || "—"}</p>
                                 )}
                               </div>
+
                               <div className="space-y-0.5">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
                                   Serial
@@ -957,11 +922,7 @@ export default function AdminProductsPage() {
                                   <input
                                     type="text"
                                     value={editSerialNumber}
-                                    onChange={(e) =>
-                                      setEditSerialNumber(
-                                        e.target.value
-                                      )
-                                    }
+                                    onChange={(e) => setEditSerialNumber(e.target.value)}
                                     className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                                   />
                                 ) : (
@@ -970,6 +931,7 @@ export default function AdminProductsPage() {
                                   </p>
                                 )}
                               </div>
+
                               <div className="space-y-0.5">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
                                   Warranty
@@ -978,11 +940,7 @@ export default function AdminProductsPage() {
                                   <input
                                     type="text"
                                     value={editWarrantyStatus}
-                                    onChange={(e) =>
-                                      setEditWarrantyStatus(
-                                        e.target.value
-                                      )
-                                    }
+                                    onChange={(e) => setEditWarrantyStatus(e.target.value)}
                                     className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                                   />
                                 ) : (
@@ -991,6 +949,7 @@ export default function AdminProductsPage() {
                                   </p>
                                 )}
                               </div>
+
                               <div className="space-y-0.5">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
                                   Distributor
@@ -999,11 +958,7 @@ export default function AdminProductsPage() {
                                   <input
                                     type="text"
                                     value={editDistributorInfo}
-                                    onChange={(e) =>
-                                      setEditDistributorInfo(
-                                        e.target.value
-                                      )
-                                    }
+                                    onChange={(e) => setEditDistributorInfo(e.target.value)}
                                     className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                                   />
                                 ) : (
@@ -1012,6 +967,7 @@ export default function AdminProductsPage() {
                                   </p>
                                 )}
                               </div>
+
                               <div className="space-y-0.5">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
                                   Category
@@ -1019,17 +975,12 @@ export default function AdminProductsPage() {
                                 {isEditing ? (
                                   <select
                                     value={editCategory}
-                                    onChange={(e) =>
-                                      setEditCategory(e.target.value)
-                                    }
+                                    onChange={(e) => setEditCategory(e.target.value)}
                                     className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
                                   >
                                     <option value="">Uncategorized</option>
                                     {CATEGORY_OPTIONS.map((opt) => (
-                                      <option
-                                        key={opt.id}
-                                        value={String(opt.id)}
-                                      >
+                                      <option key={opt.id} value={String(opt.id)}>
                                         {opt.label}
                                       </option>
                                     ))}
