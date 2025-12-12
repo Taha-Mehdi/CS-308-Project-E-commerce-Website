@@ -480,7 +480,6 @@ export default function ProductDetailPage() {
                         <p className="text-sm text-gray-700 leading-relaxed">
                           {rev.comment || (
                             <span className="text-gray-400 italic font-medium">
-                              No written comment.
                             </span>
                           )}
                         </p>
