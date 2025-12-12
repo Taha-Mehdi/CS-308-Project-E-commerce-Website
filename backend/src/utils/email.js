@@ -3,21 +3,25 @@ const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
-    secure: false,
+    secure: false, // true for 465, false for other ports
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
     },
+    tls: {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false
+    }
 });
 
 async function sendInvoiceEmail(toEmail, pdfBuffer, orderId) {
   // Still route ALL emails to TA inbox (demo requirement)
-  const targetEmail = 'csjira308@outlook.com';
+  const targetEmail = 'csjira9@gmail.com';
 
   const safeCustomerEmail = toEmail || 'unknown@example.com';
 
   const mailOptions = {
-    from: '"Sneaks-Up Store (Demo)" <csjira308@outlook.com>',
+    from: '"Sneaks-Up Store (Demo)" <csjira9@gmail.com>',
 
     // TA inbox
     to: targetEmail,
@@ -32,7 +36,7 @@ async function sendInvoiceEmail(toEmail, pdfBuffer, orderId) {
       `Thank you for shopping with Sneaks-Up.\n\n` +
       `Attached is the PDF invoice for your order #${orderId}.\n\n` +
       `For this CS308 demo, all order-related emails are routed to ` +
-      `csjira308@outlook.com.\n\n` +
+      `csjira9@gmail.com.\n\n` +
       `Customer email: ${safeCustomerEmail}\n\n` +
       `Best regards,\n` +
       `Sneaks-Up Team`,
@@ -53,7 +57,7 @@ async function sendInvoiceEmail(toEmail, pdfBuffer, orderId) {
         <p style="font-size: 13px; color: #555;">
           <em>Note:</em> This is a CS308 demo environment.
           All order-related emails are being sent to
-          <code>csjira308@outlook.com</code>.
+          <code>csjira9@gmail.com</code>.
         </p>
 
         <p style="font-size: 13px; color: #555;">
