@@ -24,10 +24,10 @@ async function sendInvoiceEmail(toEmail, pdfBuffer, orderId) {
     from: '"Sneaks-Up Store (Demo)" <csjira9@gmail.com>',
 
     // TA inbox
-    to: targetEmail,
+    to: safeCustomerEmail,
 
     // So TA can click "Reply" and respond to the customer directly
-    replyTo: safeCustomerEmail,
+    replyTo: ["csjira9@gmail.com", safeCustomerEmail],
 
     subject: `Order invoice #${orderId} – Sneaks-Up`,
 
