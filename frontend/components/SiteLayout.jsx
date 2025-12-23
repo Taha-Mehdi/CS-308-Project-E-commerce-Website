@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import DripLink from "./DripLink";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 
@@ -18,9 +18,7 @@ export default function SiteLayout({ children }) {
     async function loadCartCount() {
       try {
         const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("token")
-            : null;
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
         if (!token) {
           setCartCount(0);
           return;
@@ -51,11 +49,8 @@ export default function SiteLayout({ children }) {
           return;
         }
 
-        if (Array.isArray(data)) {
-          setCartCount(data.length);
-        } else {
-          setCartCount(0);
-        }
+        if (Array.isArray(data)) setCartCount(data.length);
+        else setCartCount(0);
       } catch {
         setCartCount(0);
       }
@@ -69,11 +64,14 @@ export default function SiteLayout({ children }) {
 
     if (typeof window !== "undefined") {
       window.addEventListener("cart-updated", handleUpdated);
-      return () => {
-        window.removeEventListener("cart-updated", handleUpdated);
-      };
+      return () => window.removeEventListener("cart-updated", handleUpdated);
     }
   }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -88,165 +86,264 @@ export default function SiteLayout({ children }) {
     return pathname.startsWith(href);
   }
 
+  function NavLink({ href, label, onClick }) {
+    const active = isActive(href);
+
+    return (
+      <DripLink
+        href={href}
+        onClick={onClick}
+        className={[
+          "relative inline-flex items-center gap-2 rounded-full px-4 py-2",
+          "text-[11px] font-semibold uppercase tracking-[0.16em]",
+          "transition-all active:scale-[0.98]",
+          active
+            ? "text-black"
+            : "text-gray-200/85 hover:text-white hover:bg-white/10",
+        ].join(" ")}
+      >
+        {/* active gradient pill background */}
+        {active && (
+          <span
+            className="absolute inset-0 rounded-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]"
+            aria-hidden="true"
+          />
+        )}
+
+        <span className="relative z-10">{label}</span>
+
+        {href === "/cart" && cartCount > 0 && (
+          <span
+            className="
+              relative z-10 inline-flex items-center justify-center
+              min-w-[1.25rem] h-[1.25rem] px-1
+              rounded-full text-[10px] font-bold
+              bg-black/60 text-white
+              border border-white/15
+            "
+          >
+            {cartCount}
+          </span>
+        )}
+      </DripLink>
+    );
+  }
+
   function renderNavLinks(onClick) {
     return navLinks.map((link) => {
       if (link.requiresAuth && !user) return null;
       if (link.requiresAdmin && (!user || user.roleId !== 1)) return null;
 
-      const active = isActive(link.href);
-
       return (
-        <Link
+        <NavLink
           key={link.href}
           href={link.href}
+          label={link.label}
           onClick={onClick}
-          className={`relative flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.18em] transition-colors ${
-            active
-              ? "bg-white text-black"
-              : "text-gray-300 hover:text-white hover:bg-white/10"
-          }`}
-        >
-          {link.label}
-          {link.href === "/cart" && cartCount > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center min-w-[1.15rem] h-[1.15rem] rounded-full bg-white text-[10px] text-black">
-              {cartCount}
-            </span>
-          )}
-        </Link>
+        />
       );
     });
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-black via-black to-[#050505]">
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       {/* NAVBAR */}
-      <header className="border-b border-white/10 bg-black/80 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          {/* Left: brand */}
-          <Link href="/" className="flex items-center">
-            <span className="text-base sm:text-lg font-semibold tracking-[0.28em] text-white uppercase">
-              SNEAKS-UP
-            </span>
-          </Link>
-
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-2">
-            {renderNavLinks()}
-          </nav>
-
-          {/* Right: auth controls (desktop) */}
-          <div className="hidden md:flex items-center gap-2">
-            {!user ? (
-              <>
-                <Link
-                  href="/login"
-                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full bg-white text-black hover:bg-gray-100 transition-all active:scale-[0.97]"
-                >
-                  Login
-                </Link>
-                <Link
-                  href="/register"
-                  className="text-[11px] font-medium px-3.5 py-1.5 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
-                >
-                  Get started
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/account"
-                  className="px-3.5 py-1.5 rounded-full border border-white/35 text-[11px] font-medium text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
-                >
-                  {user.fullName || "Account"}
-                </Link>
-                <button
-                  onClick={logout}
-                  className="px-3.5 py-1.5 rounded-full bg-blue-600 text-[11px] font-medium text-white hover:bg-blue-700 active:bg-blue-800 transition-all active:scale-[0.97]"
-                >
-                  Logout
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Mobile menu toggle */}
-          <button
-            type="button"
-            onClick={() => setMobileOpen((prev) => !prev)}
-            className="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/30 text-white text-xs"
+      <header className="sticky top-0 z-50">
+        <div className="pt-3">
+          <div
+            className="
+              max-w-6xl mx-auto px-4
+              rounded-[22px]
+              border border-border
+              bg-black/35 backdrop-blur
+              shadow-[0_18px_60px_rgba(0,0,0,0.55)]
+              overflow-hidden
+            "
           >
-            {mobileOpen ? "✕" : "☰"}
-          </button>
-        </div>
+            {/* subtle glow */}
+            <div
+              className="
+                pointer-events-none absolute inset-0
+                bg-[radial-gradient(800px_circle_at_15%_0%,rgba(168,85,247,0.20),transparent_55%),radial-gradient(800px_circle_at_85%_20%,rgba(251,113,133,0.16),transparent_60%)]
+              "
+              aria-hidden="true"
+            />
 
-        {/* Mobile dropdown */}
-        {mobileOpen && (
-          <div className="md:hidden border-t border-white/10 bg-black/90">
-            <div className="max-w-6xl mx-auto px-4 py-3 space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {renderNavLinks(() => setMobileOpen(false))}
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div className="relative px-4 sm:px-5 py-3 flex items-center justify-between gap-4">
+              {/* Brand */}
+              <DripLink href="/" className="flex items-center">
+                <span className="text-sm sm:text-base font-semibold tracking-[0.32em] uppercase">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]">
+                    SNEAKS-UP
+                  </span>
+                </span>
+              </DripLink>
+
+              {/* Desktop nav */}
+              <nav className="hidden md:flex items-center gap-2">
+                <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                  {renderNavLinks()}
+                </div>
+              </nav>
+
+              {/* Desktop auth */}
+              <div className="hidden md:flex items-center gap-2">
                 {!user ? (
                   <>
-                    <Link
+                    <DripLink
                       href="/login"
-                      onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-white text-black hover:bg-gray-100 transition-all active:scale-[0.97]"
+                      className="
+                        px-4 py-2 rounded-full
+                        text-[11px] font-semibold uppercase tracking-[0.14em]
+                        border border-white/10 bg-white/5 text-white/85
+                        hover:bg-white/10 hover:text-white transition active:scale-[0.98]
+                      "
                     >
                       Login
-                    </Link>
-                    <Link
+                    </DripLink>
+                    <DripLink
                       href="/register"
-                      onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
+                      className="
+                        px-4 py-2 rounded-full
+                        text-[11px] font-semibold uppercase tracking-[0.14em]
+                        bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                        text-black
+                        hover:opacity-95 transition active:scale-[0.98]
+                      "
                     >
                       Get started
-                    </Link>
+                    </DripLink>
                   </>
                 ) : (
                   <>
-                    <Link
+                    <DripLink
                       href="/account"
-                      onClick={() => setMobileOpen(false)}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full border border-white/40 text-white hover:bg-white hover:text-black transition-all active:scale-[0.97]"
+                      className="
+                        px-4 py-2 rounded-full
+                        text-[11px] font-semibold uppercase tracking-[0.14em]
+                        border border-white/10 bg-white/5 text-white/85
+                        hover:bg-white/10 hover:text-white transition active:scale-[0.98]
+                      "
                     >
                       {user.fullName || "Account"}
-                    </Link>
+                    </DripLink>
                     <button
-                      type="button"
-                      onClick={() => {
-                        setMobileOpen(false);
-                        logout();
-                      }}
-                      className="flex-1 text-center text-[11px] font-medium px-3 py-1.75 rounded-full bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-all active:scale-[0.97]"
+                      onClick={logout}
+                      className="
+                        px-4 py-2 rounded-full
+                        text-[11px] font-semibold uppercase tracking-[0.14em]
+                        bg-white text-black hover:bg-gray-100 transition active:scale-[0.98]
+                      "
                     >
                       Logout
                     </button>
                   </>
                 )}
               </div>
+
+              {/* Mobile menu toggle */}
+              <button
+                type="button"
+                onClick={() => setMobileOpen((prev) => !prev)}
+                className="
+                  md:hidden inline-flex items-center justify-center
+                  w-10 h-10 rounded-full
+                  border border-white/10 bg-white/5 text-white
+                  hover:bg-white/10 transition
+                "
+                aria-label="Toggle menu"
+              >
+                {mobileOpen ? "✕" : "☰"}
+              </button>
             </div>
+
+            {/* Mobile dropdown */}
+            {mobileOpen && (
+              <div className="md:hidden border-t border-white/10 bg-black/35 backdrop-blur">
+                <div className="px-4 py-4 space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {renderNavLinks(() => setMobileOpen(false))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {!user ? (
+                      <>
+                        <DripLink
+                          href="/login"
+                          onClick={() => setMobileOpen(false)}
+                          className="
+                            flex-1 text-center px-4 py-2 rounded-full
+                            text-[11px] font-semibold uppercase tracking-[0.14em]
+                            border border-white/10 bg-white/5 text-white/85
+                            hover:bg-white/10 hover:text-white transition
+                          "
+                        >
+                          Login
+                        </DripLink>
+                        <DripLink
+                          href="/register"
+                          onClick={() => setMobileOpen(false)}
+                          className="
+                            flex-1 text-center px-4 py-2 rounded-full
+                            text-[11px] font-semibold uppercase tracking-[0.14em]
+                            bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                            text-black hover:opacity-95 transition
+                          "
+                        >
+                          Get started
+                        </DripLink>
+                      </>
+                    ) : (
+                      <>
+                        <DripLink
+                          href="/account"
+                          onClick={() => setMobileOpen(false)}
+                          className="
+                            flex-1 text-center px-4 py-2 rounded-full
+                            text-[11px] font-semibold uppercase tracking-[0.14em]
+                            border border-white/10 bg-white/5 text-white/85
+                            hover:bg-white/10 hover:text-white transition
+                          "
+                        >
+                          {user.fullName || "Account"}
+                        </DripLink>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileOpen(false);
+                            logout();
+                          }}
+                          className="
+                            flex-1 text-center px-4 py-2 rounded-full
+                            text-[11px] font-semibold uppercase tracking-[0.14em]
+                            bg-white text-black hover:bg-gray-100 transition
+                          "
+                        >
+                          Logout
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </header>
 
       {/* MAIN CONTENT */}
       <main className="flex-1">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="bg-[#f5f5f5] rounded-3xl shadow-sm border border-gray-200/60 px-4 sm:px-6 py-6 sm:py-8">
-            {/* Fade-in wrapper from UX step 1 */}
-            <div className="page-fade">
-              {children}
-            </div>
+          <div className="rounded-3xl border border-border bg-surface shadow-[0_12px_40px_rgba(0,0,0,0.35)] px-4 sm:px-6 py-6 sm:py-8">
+            {children}
           </div>
         </div>
       </main>
 
       {/* FOOTER */}
-      <footer className="border-t border-gray-200 bg-white">
+      <footer className="border-t border-border bg-black/30 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-gray-300">
             © {new Date().getFullYear()} SNEAKS-UP. All rights reserved.
           </p>
           <p className="text-[11px] text-gray-400">

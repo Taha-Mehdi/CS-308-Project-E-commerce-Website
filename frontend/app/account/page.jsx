@@ -1,11 +1,44 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import DripLink from "../../components/DripLink";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+function initialsFromName(fullName) {
+  if (!fullName) return "SU";
+  const parts = fullName.trim().split(" ").filter(Boolean);
+  const s = parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+  return s || "SU";
+}
+
+function statusChip(status) {
+  const s = String(status || "unknown").toLowerCase();
+
+  // keep it simple + premium
+  const base =
+    "inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+
+  if (s === "delivered") {
+    return `${base} bg-emerald-500/10 text-emerald-200 border-emerald-500/25`;
+  }
+  if (s === "in_transit" || s === "in transit") {
+    return `${base} bg-blue-500/10 text-blue-200 border-blue-500/25`;
+  }
+  if (s === "processing") {
+    return `${base} bg-amber-500/10 text-amber-200 border-amber-500/25`;
+  }
+  if (s === "cancelled") {
+    return `${base} bg-red-500/10 text-red-200 border-red-500/25`;
+  }
+
+  return `${base} bg-white/5 text-gray-200/80 border-white/10`;
+}
 
 export default function AccountPage() {
   const { user, loadingUser } = useAuth();
@@ -22,9 +55,7 @@ export default function AccountPage() {
 
       try {
         const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("token")
-            : null;
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
         if (!token) {
           setOrders([]);
@@ -33,9 +64,7 @@ export default function AccountPage() {
         }
 
         const res = await fetch(`${apiBase}/orders/my`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) {
@@ -44,12 +73,8 @@ export default function AccountPage() {
           if (ct.includes("application/json")) {
             try {
               const errJson = await res.json();
-              if (errJson && errJson.message) {
-                msg = errJson.message;
-              }
-            } catch {
-              // ignore parse error
-            }
+              if (errJson?.message) msg = errJson.message;
+            } catch {}
           }
           setMessage(msg);
           setOrders([]);
@@ -75,14 +100,9 @@ export default function AccountPage() {
           return;
         }
 
-        // Support both array and { orders, items }
-        if (Array.isArray(data)) {
-          setOrders(data);
-        } else if (Array.isArray(data.orders)) {
-          setOrders(data.orders);
-        } else {
-          setOrders([]);
-        }
+        if (Array.isArray(data)) setOrders(data);
+        else if (Array.isArray(data?.orders)) setOrders(data.orders);
+        else setOrders([]);
       } catch (err) {
         console.error("Account orders load error:", err);
         setMessage("Failed to load your orders.");
@@ -92,32 +112,26 @@ export default function AccountPage() {
       }
     }
 
-    if (!loadingUser && user) {
-      loadMyOrders();
-    } else if (!loadingUser) {
-      setLoadingOrders(false);
-    }
+    if (!loadingUser && user) loadMyOrders();
+    else if (!loadingUser) setLoadingOrders(false);
   }, [loadingUser, user]);
 
   // Sort orders newest → oldest
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => {
-      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const da = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const db = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
       return db - da;
     });
   }, [orders]);
 
-  const recentOrders = useMemo(
-    () => sortedOrders.slice(0, 3),
-    [sortedOrders]
-  );
+  const recentOrders = useMemo(() => sortedOrders.slice(0, 3), [sortedOrders]);
 
   // AUTH GATES
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-500">Checking your account…</p>
+        <p className="text-sm text-gray-300/70">Checking your account…</p>
       </SiteLayout>
     );
   }
@@ -125,35 +139,45 @@ export default function AccountPage() {
   if (!user) {
     return (
       <SiteLayout>
-        <div className="space-y-5">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
-              Sneaks-up
+        <div className="space-y-6 py-6">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Account
             </p>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-              Your SNEAKS-UP account
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Your SNEAKS-UP profile
             </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Sign in to track your orders, bag, and drops in one place.
+            <p className="text-sm text-gray-300/70">
+              Sign in to track orders, manage your bag, and save your history.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link
+            <DripLink
               href="/login"
-              className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                hover:opacity-95 transition active:scale-[0.98]
+              "
             >
               Login
-            </Link>
-            <Link
+            </DripLink>
+            <DripLink
               href="/register"
-              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                border border-border bg-white/5 text-[11px] font-semibold
+                uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10
+                transition active:scale-[0.98]
+              "
             >
               Create account
-            </Link>
+            </DripLink>
           </div>
 
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-gray-300/55">
             Already shopped? Log in with the same email to see your history.
           </p>
         </div>
@@ -164,146 +188,184 @@ export default function AccountPage() {
   // LOGGED-IN UI
   return (
     <SiteLayout>
-      <div className="space-y-7">
-        {/* HEADER + PROFILE CARD */}
+      <div className="space-y-8 py-6">
+        {/* HEADER */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
-              Sneaks-up
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Account
             </p>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
               Hey, {user.fullName || "Sneakerhead"}
             </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              This is your control room — orders, bag and drops all linked to{" "}
-              <span className="font-medium text-gray-900">
-                {user.email}
-              </span>
-              .
+            <p className="text-sm text-gray-300/70">
+              Your control room — orders, bag and drops linked to{" "}
+              <span className="font-semibold text-gray-100">{user.email}</span>.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5 sm:py-4 shadow-sm flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold uppercase tracking-[0.18em]">
-              {user.fullName
-                ? user.fullName
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)
-                : "SU"}
+          {/* Profile card */}
+          <div className="rounded-[28px] border border-border bg-black/25 backdrop-blur px-5 py-4 shadow-[0_16px_60px_rgba(0,0,0,0.45)] flex items-center gap-4">
+            <div className="h-11 w-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-100">
+                {initialsFromName(user.fullName)}
+              </span>
             </div>
-            <div className="space-y-0.5">
-              <p className="text-xs font-semibold text-gray-900">
+            <div className="space-y-0.5 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">
                 {user.fullName || "SNEAKS-UP Member"}
               </p>
-              <p className="text-[11px] text-gray-500">{user.email}</p>
+              <p className="text-[11px] text-gray-300/60 truncate">
+                {user.email}
+              </p>
             </div>
           </div>
         </div>
 
         {/* QUICK ACTIONS */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Link
+        <div className="grid gap-4 sm:grid-cols-3">
+          <DripLink
             href="/products"
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm flex flex-col gap-2 hover:-translate-y-[1px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+            "
           >
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Browse
             </p>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="mt-1 text-sm font-semibold text-white">
               Browse drops
             </p>
-            <p className="text-[11px] text-gray-500">
-              Explore what&apos;s live in the SNEAKS-UP vault.
+            <p className="mt-1 text-[11px] text-gray-300/60">
+              Explore what’s live in the vault.
             </p>
-          </Link>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
+            </div>
+          </DripLink>
 
-          <Link
+          <DripLink
             href="/cart"
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm flex flex-col gap-2 hover:-translate-y-[1px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+            "
           >
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Bag
             </p>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="mt-1 text-sm font-semibold text-white">
               View your bag
             </p>
-            <p className="text-[11px] text-gray-500">
-              Review pairs you&apos;ve lined up before checkout.
+            <p className="mt-1 text-[11px] text-gray-300/60">
+              Review pairs lined up before checkout.
             </p>
-          </Link>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
+            </div>
+          </DripLink>
 
-          <Link
+          <DripLink
             href="/orders"
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm flex flex-col gap-2 hover:-translate-y-[1px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+            "
           >
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               History
             </p>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="mt-1 text-sm font-semibold text-white">
               Your orders
             </p>
-            <p className="text-[11px] text-gray-500">
-              Track delivery status & download invoices.
+            <p className="mt-1 text-[11px] text-gray-300/60">
+              Track status & download invoices.
             </p>
-          </Link>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
+            </div>
+          </DripLink>
         </div>
 
         {/* RECENT ORDERS */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-gray-900">
-              Recent orders
-            </p>
-            <Link
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+                Recent
+              </p>
+              <p className="text-sm font-semibold text-white">
+                Recent orders
+              </p>
+            </div>
+
+            <DripLink
               href="/orders"
-              className="text-[11px] text-gray-600 underline underline-offset-4 hover:text-black"
+              className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
             >
               View full history
-            </Link>
+            </DripLink>
           </div>
 
           {loadingOrders ? (
-            <p className="text-xs text-gray-500">Loading your orders…</p>
+            <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-5 text-[11px] text-gray-300/70">
+              Loading your orders…
+            </div>
           ) : recentOrders.length === 0 ? (
-            <p className="text-xs text-gray-500">
-              No orders yet. Once you check out, they&apos;ll appear here.
-            </p>
+            <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-5 text-[11px] text-gray-300/70">
+              No orders yet. Once you check out, they’ll appear here.
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4">
               {recentOrders.map((order) => (
                 <div
                   key={order.id}
-                  className="rounded-2xl border border-gray-200 bg-white px-4 py-3 sm:px-5 sm:py-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  className="
+                    rounded-[28px] border border-border bg-black/20 backdrop-blur
+                    p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+                    flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4
+                  "
                 >
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold text-gray-900">
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-sm font-semibold text-white">
                       Order #{order.id}
                     </p>
-                    <p className="text-[11px] text-gray-500">
+
+                    <p className="text-[11px] text-gray-300/60">
                       Placed{" "}
                       {order.createdAt
                         ? new Date(order.createdAt).toLocaleString()
                         : "N/A"}
                     </p>
-                    <p className="text-[11px] text-gray-500">
-                      Status:{" "}
-                      <span className="font-medium text-gray-900">
-                        {order.status}
+
+                    <div className="pt-1">
+                      <span className={statusChip(order.status)}>
+                        <span className="h-1.5 w-1.5 rounded-full bg-[var(--drip-accent)]" />
+                        {String(order.status || "unknown").replaceAll("_", " ")}
                       </span>
-                    </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-semibold text-gray-900">
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3">
+                    <p className="text-sm font-semibold text-white">
                       ${Number(order.total || 0).toFixed(2)}
                     </p>
-                    <Link
+
+                    <DripLink
                       href="/orders"
-                      className="text-[11px] border border-gray-300 rounded-full px-3 py-1.5 text-gray-800 hover:bg-gray-100 transition-colors"
+                      className="
+                        h-9 px-4 inline-flex items-center justify-center rounded-full
+                        border border-border bg-white/5 text-[11px] font-semibold
+                        uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10
+                        transition active:scale-[0.98]
+                      "
                     >
                       Details
-                    </Link>
+                    </DripLink>
                   </div>
                 </div>
               ))}
@@ -311,9 +373,11 @@ export default function AccountPage() {
           )}
         </div>
 
-        {/* SMALL FOOTNOTE */}
+        {/* FOOTNOTE */}
         {message && (
-          <p className="text-[11px] text-gray-500">{message}</p>
+          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
+            {message}
+          </div>
         )}
       </div>
     </SiteLayout>

@@ -1,32 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import SiteLayout from "../../../components/SiteLayout";
+import DripLink from "../../../components/DripLink";
 import ActionButton from "../../../components/ActionButton";
 import { useAuth } from "../../../context/AuthContext";
 
-const apiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 const STATUS_OPTIONS = ["processing", "in_transit", "delivered", "cancelled"];
 
-function statusBadgeClasses(status) {
+// Dark drip-style status pill
+function statusPill(status) {
+  const base =
+    "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+
   switch (status) {
     case "processing":
-      return "bg-amber-50 text-amber-700 border border-amber-200";
+      return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
     case "in_transit":
-      return "bg-blue-50 text-blue-700 border border-blue-200";
+      return `${base} border-sky-500/25 bg-sky-500/10 text-sky-200`;
     case "delivered":
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+      return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
     case "cancelled":
-      return "bg-red-50 text-red-700 border border-red-200";
-    // Legacy/other statuses
+      return `${base} border-red-500/25 bg-red-500/10 text-red-200`;
+    // legacy/other
     case "pending":
     case "paid":
     case "shipped":
     default:
-      return "bg-gray-50 text-gray-700 border border-gray-200";
+      return `${base} border-white/10 bg-white/5 text-gray-200/80`;
   }
 }
 
@@ -45,19 +48,22 @@ function formatStatusLabel(status) {
   }
 }
 
-const STATUS_VARIANTS = {
-  processing: "muted",
-  in_transit: "info",
-  delivered: "accent",
-  cancelled: "danger",
-  // legacy
-  pending: "muted",
-  paid: "success",
-  shipped: "info",
-};
+function panelClass() {
+  return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
+}
 
-export function statusActionVariant(status) {
-  return STATUS_VARIANTS[status] || "muted";
+function metricCard(tint = "neutral") {
+  const base =
+    "rounded-[26px] border border-border bg-black/20 backdrop-blur p-4 shadow-[0_16px_60px_rgba(0,0,0,0.40)]";
+  if (tint === "amber")
+    return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(255,200,60,0.12),transparent_60%),rgba(0,0,0,0.22)]`;
+  if (tint === "blue")
+    return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(80,200,255,0.12),transparent_60%),rgba(0,0,0,0.22)]`;
+  if (tint === "green")
+    return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(90,255,170,0.10),transparent_60%),rgba(0,0,0,0.22)]`;
+  if (tint === "red")
+    return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(255,110,110,0.10),transparent_60%),rgba(0,0,0,0.22)]`;
+  return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(255,255,255,0.08),transparent_60%),rgba(0,0,0,0.22)]`;
 }
 
 export default function AdminOrdersPage() {
@@ -67,12 +73,23 @@ export default function AdminOrdersPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
   const [expandedId, setExpandedId] = useState(null);
   const [detailsById, setDetailsById] = useState({});
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
 
   const isBrowser = typeof window !== "undefined";
+
+  async function safeJson(res) {
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) return null;
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
 
   // Load all orders (admin) + products for names/images
   useEffect(() => {
@@ -93,55 +110,24 @@ export default function AdminOrdersPage() {
 
         // Fetch orders (admin)
         const ordersRes = await fetch(`${apiBase}/orders`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         let ordersData = [];
         if (ordersRes.ok) {
-          const ct = ordersRes.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            try {
-              const json = await ordersRes.json();
-              if (Array.isArray(json)) {
-                ordersData = json;
-              }
-            } catch {
-              ordersData = [];
-            }
-          }
+          const json = await safeJson(ordersRes);
+          if (Array.isArray(json)) ordersData = json;
         } else {
-          let errMsg = "Failed to load orders.";
-          try {
-            const ct = ordersRes.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              const errJson = await ordersRes.json();
-              if (errJson && errJson.message) {
-                errMsg = errJson.message;
-              }
-            }
-          } catch {
-            // ignore
-          }
-          setMessage(errMsg);
+          const errJson = await safeJson(ordersRes);
+          setMessage(errJson?.message || "Failed to load orders.");
         }
 
         // Fetch products for mapping
         const productsRes = await fetch(`${apiBase}/products`);
         let productsData = [];
         if (productsRes.ok) {
-          const ct = productsRes.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            try {
-              const json = await productsRes.json();
-              if (Array.isArray(json)) {
-                productsData = json;
-              }
-            } catch {
-              productsData = [];
-            }
-          }
+          const json = await safeJson(productsRes);
+          if (Array.isArray(json)) productsData = json;
         }
 
         setOrders(ordersData);
@@ -165,9 +151,7 @@ export default function AdminOrdersPage() {
 
   const productsMap = useMemo(() => {
     const m = new Map();
-    for (const p of products) {
-      m.set(p.id, p);
-    }
+    for (const p of products) m.set(p.id, p);
     return m;
   }, [products]);
 
@@ -177,7 +161,6 @@ export default function AdminOrdersPage() {
     const inTransit = orders.filter((o) => o.status === "in_transit").length;
     const delivered = orders.filter((o) => o.status === "delivered").length;
     const cancelled = orders.filter((o) => o.status === "cancelled").length;
-
     return { total, processing, inTransit, delivered, cancelled };
   }, [orders]);
 
@@ -185,7 +168,7 @@ export default function AdminOrdersPage() {
     return [...orders].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return db - da; // newest first
+      return db - da;
     });
   }, [orders]);
 
@@ -218,49 +201,22 @@ export default function AdminOrdersPage() {
       }
 
       const res = await fetch(`${apiBase}/orders/${orderId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) {
-        let msg = "Failed to load order details.";
-        try {
-          const ct = res.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            const json = await res.json();
-            if (json && json.message) msg = json.message;
-          }
-        } catch {
-          // ignore
-        }
-        setMessage(msg);
+        const json = await safeJson(res);
+        setMessage(json?.message || "Failed to load order details.");
         return;
       }
 
-      const ct = res.headers.get("content-type") || "";
-      if (!ct.includes("application/json")) {
-        setMessage("Unexpected response while loading order details.");
-        return;
-      }
-
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        setMessage("Could not decode order details.");
-        return;
-      }
-
+      const data = await safeJson(res);
       if (!data || !Array.isArray(data.items)) {
         setMessage("Order details format is invalid.");
         return;
       }
 
-      setDetailsById((prev) => ({
-        ...prev,
-        [orderId]: data,
-      }));
+      setDetailsById((prev) => ({ ...prev, [orderId]: data }));
     } catch (err) {
       console.error("Admin load order details error:", err);
       setMessage("Failed to load order details.");
@@ -291,18 +247,9 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-      if (ct.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-      }
+      const data = await safeJson(res);
 
       if (!res.ok) {
-        console.error("Status update failed:", res.status, data);
         const msg =
           (data && data.message) ||
           "Failed to update order status. Please try again.";
@@ -311,7 +258,6 @@ export default function AdminOrdersPage() {
         return;
       }
 
-      // Update local state
       const updatedOrder = data && data.order ? data.order : null;
 
       setOrders((prev) =>
@@ -322,7 +268,6 @@ export default function AdminOrdersPage() {
         )
       );
 
-      // Also update expanded details if present
       setDetailsById((prev) => {
         const current = prev[orderId];
         if (!current) return prev;
@@ -365,9 +310,7 @@ export default function AdminOrdersPage() {
       setMessage("");
 
       const res = await fetch(`${apiBase}/invoice/${orderId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const ct = res.headers.get("content-type") || "";
@@ -375,14 +318,9 @@ export default function AdminOrdersPage() {
       if (!res.ok) {
         let msg = "Invoice download failed.";
         if (ct.includes("application/json")) {
-          try {
-            const json = await res.json();
-            if (json && json.message) msg = json.message;
-          } catch {
-            // ignore
-          }
+          const json = await safeJson(res);
+          if (json?.message) msg = json.message;
         }
-        console.error("Invoice download failed:", res.status);
         setMessage(msg);
         if (isBrowser) window.alert(msg);
         return;
@@ -391,8 +329,7 @@ export default function AdminOrdersPage() {
       if (!ct.includes("application/pdf")) {
         const msg = "Unexpected invoice response.";
         setMessage(msg);
-        if (isBrowser)
-          window.alert("Unexpected invoice response from server.");
+        if (isBrowser) window.alert("Unexpected invoice response from server.");
         return;
       }
 
@@ -420,7 +357,7 @@ export default function AdminOrdersPage() {
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-500">Checking admin access…</p>
+        <p className="text-sm text-gray-300/70">Checking admin access…</p>
       </SiteLayout>
     );
   }
@@ -428,26 +365,41 @@ export default function AdminOrdersPage() {
   if (!user) {
     return (
       <SiteLayout>
-        <div className="space-y-4">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-            Admin · Orders
-          </h1>
-          <p className="text-sm text-gray-600 max-w-sm">
-            You need to be logged in as an admin to manage orders.
-          </p>
+        <div className="space-y-6 py-6">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Orders overview
+            </h1>
+            <p className="text-sm text-gray-300/70 max-w-md">
+              You need to be logged in as an admin to manage orders.
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-3">
-            <Link
+            <DripLink
               href="/login"
-              className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                hover:opacity-95 transition active:scale-[0.98]
+              "
             >
               Login
-            </Link>
-            <Link
+            </DripLink>
+            <DripLink
               href="/register"
-              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                border border-border bg-white/5 text-[11px] font-semibold uppercase tracking-[0.18em]
+                text-gray-100 hover:bg-white/10 transition active:scale-[0.98]
+              "
             >
               Sign up
-            </Link>
+            </DripLink>
           </div>
         </div>
       </SiteLayout>
@@ -457,19 +409,25 @@ export default function AdminOrdersPage() {
   if (user.roleId !== 1) {
     return (
       <SiteLayout>
-        <div className="space-y-3">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-            Admin · Orders
-          </h1>
-          <p className="text-sm text-gray-600">
-            Your account does not have admin permissions.
-          </p>
-          <Link
+        <div className="space-y-4 py-6">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Orders overview
+            </h1>
+            <p className="text-sm text-gray-300/70">
+              Your account does not have admin permissions.
+            </p>
+          </div>
+
+          <DripLink
             href="/"
-            className="inline-flex text-xs text-gray-800 underline underline-offset-4 mt-2"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
           >
             Back to homepage
-          </Link>
+          </DripLink>
         </div>
       </SiteLayout>
     );
@@ -477,149 +435,154 @@ export default function AdminOrdersPage() {
 
   return (
     <SiteLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 py-6">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
               Sneaks-up · Admin
             </p>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
               Orders overview
             </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Track every pair leaving the SNEAKS-UP vault. Update status and
-              export invoices in one place.
+            <p className="text-sm text-gray-300/70 max-w-2xl">
+              Track every pair leaving the vault. Update status and export invoices.
             </p>
+
+            <div className="pt-2 flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border border-white/10 bg-white/5 text-gray-200/80">
+                {orders.length} total
+              </span>
+              <span className={statusPill("processing")}>{stats.processing} processing</span>
+              <span className={statusPill("in_transit")}>{stats.inTransit} in-transit</span>
+              <span className={statusPill("delivered")}>{stats.delivered} delivered</span>
+              <span className={statusPill("cancelled")}>{stats.cancelled} cancelled</span>
+            </div>
           </div>
-          <Link
+
+          <DripLink
             href="/admin"
-            className="text-[11px] text-gray-700 underline underline-offset-4 hover:text-black"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
           >
             Back to admin dashboard
-          </Link>
+          </DripLink>
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-5">
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className={metricCard("neutral")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Total
             </p>
-            <p className="mt-2 text-xl font-semibold text-gray-900">
-              {stats.total}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">All orders</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.total}</p>
+            <p className="mt-1 text-[11px] text-gray-300/55">All orders</p>
           </div>
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+
+          <div className={metricCard("amber")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Processing
             </p>
-            <p className="mt-2 text-xl font-semibold text-amber-700">
-              {stats.processing}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">In warehouse</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.processing}</p>
+            <p className="mt-1 text-[11px] text-gray-300/55">In warehouse</p>
           </div>
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+
+          <div className={metricCard("blue")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               In-transit
             </p>
-            <p className="mt-2 text-xl font-semibold text-blue-700">
-              {stats.inTransit}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">On the way</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.inTransit}</p>
+            <p className="mt-1 text-[11px] text-gray-300/55">On the way</p>
           </div>
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+
+          <div className={metricCard("green")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Delivered
             </p>
-            <p className="mt-2 text-xl font-semibold text-emerald-700">
-              {stats.delivered}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">On feet</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.delivered}</p>
+            <p className="mt-1 text-[11px] text-gray-300/55">On feet</p>
           </div>
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+
+          <div className={metricCard("red")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
               Cancelled
             </p>
-            <p className="mt-2 text-xl font-semibold text-red-700">
-              {stats.cancelled}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">Stopped</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.cancelled}</p>
+            <p className="mt-1 text-[11px] text-gray-300/55">Stopped</p>
           </div>
         </div>
 
         {/* Messages */}
         {message && (
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-700">
+          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
             {message}
           </div>
         )}
 
-        {/* List of orders */}
+        {/* Orders list */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-900">
-              All store orders
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+              Store orders
             </p>
-            <p className="text-[11px] text-gray-500">
+            <p className="text-[11px] text-gray-300/55">
               {orders.length} record{orders.length === 1 ? "" : "s"}
             </p>
           </div>
 
           {loading ? (
-            <p className="text-sm text-gray-500">Loading orders…</p>
+            <div className={panelClass()}>
+              <p className="text-sm text-gray-300/70">Loading orders…</p>
+            </div>
           ) : sortedOrders.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No orders yet. Once customers check out, they will show up here.
-            </p>
+            <div className={panelClass()}>
+              <p className="text-sm text-gray-300/70">
+                No orders yet. Once customers check out, they will show up here.
+              </p>
+            </div>
           ) : (
             <div className="space-y-3">
               {sortedOrders.map((order) => {
                 const isExpanded = expandedId === order.id;
-                const statusClass = statusBadgeClasses(order.status);
                 const orderDetails = detailsById[order.id];
                 const items = orderDetails?.items || [];
 
                 return (
-                  <div
-                    key={order.id}
-                    className="rounded-3xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm"
-                  >
-                    {/* Top row: summary */}
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div key={order.id} className={panelClass()}>
+                    {/* Summary */}
+                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-gray-900">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-white">
                             Order #{order.id}
                           </p>
-                          <span
-                            className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.16em] ${statusClass}`}
-                          >
+                          <span className={statusPill(order.status)}>
                             {formatStatusLabel(order.status)}
                           </span>
                         </div>
-                        <p className="text-[11px] text-gray-500">
+
+                        <p className="text-[11px] text-gray-300/60">
                           User ID:{" "}
-                          <span className="font-medium text-gray-800">
+                          <span className="font-medium text-gray-100/90">
                             {order.userId}
                           </span>
                         </p>
-                        <p className="text-[11px] text-gray-500">
+                        <p className="text-[11px] text-gray-300/60">
                           Created:{" "}
-                          <span className="font-medium text-gray-800">
+                          <span className="font-medium text-gray-100/90">
                             {order.createdAt
                               ? new Date(order.createdAt).toLocaleString()
                               : "N/A"}
                           </span>
                         </p>
                       </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <p className="text-sm font-semibold text-gray-900">
+
+                      <div className="flex flex-col items-start lg:items-end gap-2">
+                        <p className="text-sm font-semibold text-white">
                           ${Number(order.total || 0).toFixed(2)}
                         </p>
+
                         <div className="flex flex-wrap items-center gap-2">
-                          {/* STATUS DROPDOWN */}
+                          {/* Status dropdown */}
                           <div className="relative">
                             <select
                               value={order.status}
@@ -627,7 +590,13 @@ export default function AdminOrdersPage() {
                               onChange={(e) =>
                                 handleChangeStatus(order.id, e.target.value)
                               }
-                              className="appearance-none rounded-full border border-gray-300 bg-white px-3 pr-8 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-800 hover:border-black/60 focus:outline-none focus:ring-2 focus:ring-black/15"
+                              className="
+                                appearance-none h-10 rounded-full border border-white/10 bg-white/5
+                                px-4 pr-9 text-[11px] font-semibold uppercase tracking-[0.18em]
+                                text-gray-100 hover:bg-white/10 transition
+                                focus:outline-none focus:ring-2 focus:ring-white/15
+                                disabled:opacity-60 disabled:cursor-not-allowed
+                              "
                             >
                               {STATUS_OPTIONS.map((status) => (
                                 <option key={status} value={status}>
@@ -635,7 +604,7 @@ export default function AdminOrdersPage() {
                                 </option>
                               ))}
                             </select>
-                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-300/70">
                               ▾
                             </span>
                           </div>
@@ -645,9 +614,7 @@ export default function AdminOrdersPage() {
                             onClick={() => handleDownloadInvoice(order.id)}
                             disabled={invoiceLoadingId === order.id}
                           >
-                            {invoiceLoadingId === order.id
-                              ? "Preparing…"
-                              : "Invoice"}
+                            {invoiceLoadingId === order.id ? "Preparing…" : "Invoice"}
                           </ActionButton>
 
                           <ActionButton
@@ -663,24 +630,21 @@ export default function AdminOrdersPage() {
 
                     {/* Expanded items */}
                     {isExpanded && (
-                      <div className="mt-4 border-t border-gray-100 pt-3">
+                      <div className="mt-4 border-t border-white/10 pt-4">
                         {orderDetails == null ? (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-gray-300/70">
                             Loading items…
                           </p>
                         ) : items.length === 0 ? (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-gray-300/70">
                             No items found for this order.
                           </p>
                         ) : (
                           <div className="space-y-2">
                             {items.map((item) => {
                               const p = productsMap.get(item.productId);
-                              const unitPrice = Number(
-                                item.unitPrice || 0
-                              );
-                              const lineTotal =
-                                unitPrice * (item.quantity || 0);
+                              const unitPrice = Number(item.unitPrice || 0);
+                              const lineTotal = unitPrice * (item.quantity || 0);
 
                               let imageUrl = p?.imageUrl || null;
                               if (imageUrl && !imageUrl.startsWith("http")) {
@@ -690,36 +654,32 @@ export default function AdminOrdersPage() {
                               return (
                                 <div
                                   key={item.id}
-                                  className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5"
+                                  className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-white/5 px-3 py-3"
                                 >
-                                  <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                                  <div className="w-14 h-14 rounded-2xl bg-black/30 border border-white/10 overflow-hidden flex items-center justify-center">
                                     {imageUrl ? (
                                       <img
                                         src={imageUrl}
-                                        alt={
-                                          p?.name ||
-                                          `Product #${item.productId}`
-                                        }
+                                        alt={p?.name || `Product #${item.productId}`}
                                         className="w-full h-full object-cover"
                                       />
                                     ) : (
-                                      <span className="text-[9px] uppercase tracking-[0.18em] text-gray-400">
+                                      <span className="text-[9px] uppercase tracking-[0.18em] text-gray-300/50">
                                         Sneaks
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex-1 space-y-0.5">
-                                    <p className="text-xs font-semibold text-gray-900">
-                                      {p
-                                        ? p.name
-                                        : `Product #${item.productId}`}
+
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-white truncate">
+                                      {p ? p.name : `Product #${item.productId}`}
                                     </p>
-                                    <p className="text-[11px] text-gray-500">
-                                      Qty: {item.quantity} · $
-                                      {unitPrice.toFixed(2)} each
+                                    <p className="text-[11px] text-gray-300/60">
+                                      Qty: {item.quantity} · ${unitPrice.toFixed(2)} each
                                     </p>
                                   </div>
-                                  <div className="text-xs font-semibold text-gray-900">
+
+                                  <div className="text-sm font-semibold text-white">
                                     ${lineTotal.toFixed(2)}
                                   </div>
                                 </div>

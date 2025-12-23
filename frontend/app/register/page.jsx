@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import DripLink from "../../components/DripLink";
 import { useAuth } from "../../context/AuthContext";
 
 export default function RegisterPage() {
@@ -42,7 +42,6 @@ export default function RegisterPage() {
     }
 
     try {
-      // 1. REGISTER
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,7 +51,11 @@ export default function RegisterPage() {
       const contentType = res.headers.get("content-type") || "";
       let data = null;
       if (contentType.includes("application/json")) {
-        try { data = await res.json(); } catch { data = null; }
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
       }
 
       if (!res.ok) {
@@ -67,19 +70,19 @@ export default function RegisterPage() {
         return;
       }
 
-      // 2. LOG IN & REDIRECT
-      // We rely on the global AuthContext (triggered by login()) to handle the cart merge.
-      // This prevents the "Double Quantity" bug caused by manual merging.
+      // Save token + let AuthContext handle guest-cart merge
       localStorage.setItem("token", data.token);
 
       try {
         login(data.token, data.user);
       } catch (err) {
         console.error("AuthContext login error:", err);
+        setMessage("Something went wrong while saving your session.");
+        setSubmitting(false);
+        return;
       }
 
       router.push(nextPath);
-
     } catch (err) {
       console.error("Register error:", err);
       setMessage("An unexpected error occurred.");
@@ -87,88 +90,122 @@ export default function RegisterPage() {
     }
   }
 
+  const inputBase =
+    "w-full h-11 rounded-2xl border border-border bg-white/5 px-4 " +
+    "text-sm text-gray-100 placeholder:text-gray-400/70 backdrop-blur " +
+    "focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]";
+
   return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <div className="rounded-3xl bg-gradient-to-br from-black via-neutral-900 to-black p-[1px] shadow-[0_0_80px_rgba(255,255,255,0.18)]">
-            <div className="rounded-[calc(1.5rem-1px)] bg-[#050505] px-6 py-7 sm:px-8 sm:py-8 space-y-6">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gray-400">
-                  SNEAKS-UP
-                </p>
-                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-                  Create your account
-                </h1>
-                <p className="text-xs text-gray-400">
-                  Sign up to start collecting drops, managing your bag, and tracking orders.
-                </p>
-              </div>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white">
+      <div className="w-full max-w-md">
+        <div className="rounded-[28px] border border-border bg-black/25 backdrop-blur shadow-[0_18px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+          {/* top glow */}
+          <div
+            className="pointer-events-none h-1.5 w-full bg-gradient-to-r from-[var(--drip-accent)] via-white/20 to-[var(--drip-accent-2)]"
+            aria-hidden="true"
+          />
 
-              {message && (
-                  <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-                    {message}
-                  </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">Full name</label>
-                  <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Test User"
-                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">Email</label>
-                  <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">Password</label>
-                  <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full mt-2 rounded-full bg-blue-600 text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] text-white py-2.5 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                >
-                  {submitting ? "Creating account…" : "Create account"}
-                </button>
-              </form>
-
-              <div className="pt-2 flex items-center justify-between text-[11px] text-gray-400">
-                <span>Already have an account?</span>
-                <Link href="/login" className="text-gray-100 underline underline-offset-4 hover:text-white">
-                  Sign in instead
-                </Link>
-              </div>
-
-              <p className="text-[10px] text-gray-500 pt-1">
-                Your password is stored hashed on the server for security.
+          <div className="px-6 py-7 sm:px-8 sm:py-8 space-y-6">
+            {/* Header */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+                SNEAKS-UP
+              </p>
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+                Create account
+              </h1>
+              <p className="text-xs text-gray-300/70">
+                Sign up to save your bag, track orders, and access drops.
               </p>
             </div>
+
+            {/* Message */}
+            {message && (
+              <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[11px] text-gray-200/85">
+                {message}
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Full name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Test User"
+                  className={inputBase}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={inputBase}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={inputBase}
+                />
+                <p className="text-[10px] text-gray-300/55">
+                  Minimum 6 characters.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="
+                  w-full h-11 rounded-full
+                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                  text-black text-[11px] sm:text-sm font-semibold
+                  uppercase tracking-[0.18em]
+                  hover:opacity-95 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+              >
+                {submitting ? "Creating…" : "Create account"}
+              </button>
+            </form>
+
+            {/* Footer */}
+            <div className="pt-1 flex items-center justify-between gap-3 text-[11px] text-gray-300/70">
+              <span>Already have an account?</span>
+              <DripLink
+                href="/login"
+                className="text-gray-100 underline underline-offset-4 hover:text-white"
+              >
+                Sign in instead
+              </DripLink>
+            </div>
+
+            <p className="text-[10px] text-gray-300/55">
+              Passwords are stored hashed on the server for security.
+            </p>
           </div>
         </div>
       </div>
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import DripLink from "../../components/DripLink";
 import { useAuth } from "../../context/AuthContext";
 
 export default function LoginPage() {
@@ -19,15 +19,11 @@ export default function LoginPage() {
   const nextPath = searchParams.get("next") || "/";
 
   function validateForm() {
-    if (!email.trim()) {
-      return "Please enter your email address.";
-    }
+    if (!email.trim()) return "Please enter your email address.";
     if (!email.includes("@") || !email.includes(".")) {
       return "Please enter a valid email address.";
     }
-    if (!password.trim()) {
-      return "Please enter your password.";
-    }
+    if (!password.trim()) return "Please enter your password.";
     return null;
   }
 
@@ -44,12 +40,9 @@ export default function LoginPage() {
     }
 
     try {
-      // 1. ATTEMPT LOGIN
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -65,7 +58,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         setMessage(
-            (data && data.message) ||
+          (data && data.message) ||
             "Login failed. Check your email and password."
         );
         setSubmitting(false);
@@ -78,10 +71,6 @@ export default function LoginPage() {
         return;
       }
 
-      // 2. SAVE SESSION & REDIRECT
-      // We rely on the global AuthContext (triggered by login()) to detect
-      // the guestCart and merge it automatically.
-      // This prevents the "Double Quantity" bug caused by manual merging here.
       localStorage.setItem("token", data.token);
 
       try {
@@ -101,90 +90,106 @@ export default function LoginPage() {
     }
   }
 
+  const inputBase =
+    "w-full h-11 rounded-2xl border border-border bg-white/5 px-4 " +
+    "text-sm text-gray-100 placeholder:text-gray-400/70 backdrop-blur " +
+    "focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]";
+
   return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          {/* Outer gradient + white-ish glow */}
-          <div className="rounded-3xl bg-gradient-to-br from-black via-neutral-900 to-black p-[1px] shadow-[0_0_80px_rgba(255,255,255,0.18)]">
-            {/* Inner panel */}
-            <div className="rounded-[calc(1.5rem-1px)] bg-[#050505] px-6 py-7 sm:px-8 sm:py-8 space-y-6">
-              {/* Header / brand */}
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gray-400">
-                  SNEAKS-UP
-                </p>
-                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-                  Sign in to your account
-                </h1>
-                <p className="text-xs text-gray-400">
-                  Enter your credentials to access drops, your bag, and order
-                  history.
-                </p>
-              </div>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white">
+      <div className="w-full max-w-md">
+        {/* Outer shell */}
+        <div className="rounded-[28px] border border-border bg-black/25 backdrop-blur shadow-[0_18px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+          {/* top glow */}
+          <div
+            className="pointer-events-none h-1.5 w-full bg-gradient-to-r from-[var(--drip-accent)] via-white/20 to-[var(--drip-accent-2)]"
+            aria-hidden="true"
+          />
 
-              {/* Error box */}
-              {message && (
-                  <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-                    {message}
-                  </div>
-              )}
-
-              {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
-                    Email
-                  </label>
-                  <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-gray-300 uppercase tracking-[0.2em]">
-                    Password
-                  </label>
-                  <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-xl border border-gray-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full mt-2 rounded-full bg-blue-600 text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] text-white py-2.5 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                >
-                  {submitting ? "Signing in…" : "Sign in"}
-                </button>
-              </form>
-
-              {/* Footer links */}
-              <div className="pt-2 flex items-center justify-between text-[11px] text-gray-400">
-                <span>New to SNEAKS-UP?</span>
-                <Link
-                    href="/register"
-                    className="text-gray-100 underline underline-offset-4 hover:text-white"
-                >
-                  Create an account
-                </Link>
-              </div>
-
-              <p className="text-[10px] text-gray-500 pt-1">
-                Your session is secured with JWT-based authentication.
+          <div className="px-6 py-7 sm:px-8 sm:py-8 space-y-6">
+            {/* Brand / header */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+                SNEAKS-UP
+              </p>
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+                Sign in
+              </h1>
+              <p className="text-xs text-gray-300/70">
+                Access drops, your bag, and order history.
               </p>
             </div>
+
+            {/* Message */}
+            {message && (
+              <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[11px] text-gray-200/85">
+                {message}
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={inputBase}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={inputBase}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="
+                  w-full h-11 rounded-full
+                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                  text-black text-[11px] sm:text-sm font-semibold
+                  uppercase tracking-[0.18em]
+                  hover:opacity-95 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+              >
+                {submitting ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+
+            {/* Footer */}
+            <div className="pt-1 flex items-center justify-between gap-3 text-[11px] text-gray-300/70">
+              <span>New here?</span>
+              <DripLink
+                href="/register"
+                className="text-gray-100 underline underline-offset-4 hover:text-white"
+              >
+                Create an account
+              </DripLink>
+            </div>
+
+            <p className="text-[10px] text-gray-300/55">
+              Your session is secured with JWT authentication.
+            </p>
           </div>
         </div>
       </div>
+    </div>
   );
 }

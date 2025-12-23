@@ -1,11 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import DripLink from "../../components/DripLink";
 import SiteLayout from "../../components/SiteLayout";
 import { useAuth } from "../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+function metricCardTint(kind) {
+  // subtle tints for premium look
+  const base =
+    "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
+  if (kind === "orders") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,255,255,0.10),transparent_60%),rgba(0,0,0,0.25)]`;
+  if (kind === "revenue") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(80,200,255,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
+  if (kind === "catalog") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,110,199,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
+  return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(132,255,99,0.10),transparent_60%),rgba(0,0,0,0.25)]`;
+}
+
+function pillBase() {
+  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+}
+
+function statusPill(label, tone = "neutral") {
+  const base = pillBase();
+  if (tone === "live") return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+  if (tone === "muted") return `${base} border-white/10 bg-white/5 text-gray-200/80`;
+  if (tone === "blue") return `${base} border-sky-500/25 bg-sky-500/10 text-sky-200`;
+  if (tone === "pink") return `${base} border-pink-500/25 bg-pink-500/10 text-pink-200`;
+  return `${base} border-white/10 bg-white/5 text-gray-200/80`;
+}
 
 export default function AdminDashboardPage() {
   const { user, loadingUser } = useAuth();
@@ -101,7 +124,6 @@ export default function AdminDashboardPage() {
       return sum + (Number.isNaN(num) ? 0 : num);
     }, 0);
 
-    // use the new statuses
     const processingOrders = orders.filter((o) => o.status === "processing").length;
     const inTransitOrders = orders.filter((o) => o.status === "in_transit").length;
     const deliveredOrders = orders.filter((o) => o.status === "delivered").length;
@@ -133,7 +155,7 @@ export default function AdminDashboardPage() {
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-500">Checking admin access…</p>
+        <p className="text-sm text-gray-300/70">Checking admin access…</p>
       </SiteLayout>
     );
   }
@@ -142,27 +164,41 @@ export default function AdminDashboardPage() {
   if (!user) {
     return (
       <SiteLayout>
-        <div className="space-y-4">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-            Admin dashboard
-          </h1>
-          <p className="text-sm text-gray-600 max-w-sm">
-            You need to be logged in as an admin to access the SNEAKS-UP control
-            center.
-          </p>
+        <div className="space-y-6 py-6">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Control room
+            </h1>
+            <p className="text-sm text-gray-300/70 max-w-md">
+              You need to be logged in as an admin to access the SNEAKS-UP control center.
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-3">
-            <Link
+            <DripLink
               href="/login"
-              className="px-4 py-2.5 rounded-full bg-black text-white text-xs font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                hover:opacity-95 transition active:scale-[0.98]
+              "
             >
               Login
-            </Link>
-            <Link
+            </DripLink>
+            <DripLink
               href="/register"
-              className="px-4 py-2.5 rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.18em] text-gray-800 hover:bg-gray-100 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                border border-border bg-white/5 text-[11px] font-semibold uppercase tracking-[0.18em]
+                text-gray-100 hover:bg-white/10 transition active:scale-[0.98]
+              "
             >
               Sign up
-            </Link>
+            </DripLink>
           </div>
         </div>
       </SiteLayout>
@@ -173,19 +209,25 @@ export default function AdminDashboardPage() {
   if (user.roleId !== 1) {
     return (
       <SiteLayout>
-        <div className="space-y-3">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
-            Admin dashboard
-          </h1>
-          <p className="text-sm text-gray-600">
-            Your account does not have admin permissions.
-          </p>
-          <Link
+        <div className="space-y-4 py-6">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Control room
+            </h1>
+            <p className="text-sm text-gray-300/70">
+              Your account does not have admin permissions.
+            </p>
+          </div>
+
+          <DripLink
             href="/"
-            className="inline-flex text-xs text-gray-800 underline underline-offset-4 mt-2"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
           >
             Back to homepage
-          </Link>
+          </DripLink>
         </div>
       </SiteLayout>
     );
@@ -193,26 +235,36 @@ export default function AdminDashboardPage() {
 
   return (
     <SiteLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+      <div className="space-y-8 py-6">
+        {/* HEADER */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
               Sneaks-up · Admin
             </p>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
               Control room
             </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Live snapshot of drops, orders, and stock across the SNEAKS-UP
-              store.
+            <p className="text-sm text-gray-300/70 max-w-2xl">
+              Live snapshot of drops, orders, and stock across the store.
             </p>
+
+            <div className="pt-2 flex flex-wrap gap-2">
+              <span className={statusPill("Live", "live")}>Live</span>
+              <span className={statusPill("Private", "muted")}>Admin only</span>
+              <span className={statusPill("Metrics", "blue")}>Metrics</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={loadDashboard}
-              className="px-3.5 py-1.5 rounded-full border border-gray-300 bg-white text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
+              className="
+                h-10 px-5 inline-flex items-center justify-center rounded-full
+                border border-border bg-white/5 text-[11px] font-semibold uppercase tracking-[0.18em]
+                text-gray-100 hover:bg-white/10 transition active:scale-[0.98]
+              "
             >
               Hard refresh
             </button>
@@ -220,182 +272,185 @@ export default function AdminDashboardPage() {
         </div>
 
         {message && (
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-700">
+          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
             {message}
           </div>
         )}
 
-        {/* Top metrics grid */}
+        {/* METRICS */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm flex flex-col justify-between">
+          <div className={metricCardTint("orders")}>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/70">
                 Orders
               </p>
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="h-2 w-2 rounded-full bg-[var(--drip-accent)]" />
             </div>
-            <p className="mt-3 text-2xl font-semibold text-gray-900">
+            <p className="mt-3 text-2xl font-semibold text-white">
               {stats.totalOrders}
             </p>
-            <p className="mt-1 text-[11px] text-gray-500">
+            <p className="mt-1 text-[11px] text-gray-300/60">
               {stats.processingOrders} processing · {stats.inTransitOrders} in-transit
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm flex flex-col justify-between">
+          <div className={metricCardTint("revenue")}>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/70">
                 Revenue
               </p>
-              <span className="w-2 h-2 rounded-full bg-black" />
+              <span className="h-2 w-2 rounded-full bg-[var(--drip-accent-2)]" />
             </div>
-            <p className="mt-3 text-2xl font-semibold text-gray-900">
+            <p className="mt-3 text-2xl font-semibold text-white">
               ${stats.totalRevenue.toFixed(2)}
             </p>
-            <p className="mt-1 text-[11px] text-gray-500">
-              Delivered orders: {stats.deliveredOrders}
+            <p className="mt-1 text-[11px] text-gray-300/60">
+              Delivered: {stats.deliveredOrders}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm flex flex-col justify-between">
+          <div className={metricCardTint("catalog")}>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/70">
                 Catalog
               </p>
-              <span className="w-2 h-2 rounded-full bg-sky-500" />
+              <span className="h-2 w-2 rounded-full bg-pink-400" />
             </div>
-            <p className="mt-3 text-2xl font-semibold text-gray-900">
+            <p className="mt-3 text-2xl font-semibold text-white">
               {stats.totalProducts}
             </p>
-            <p className="mt-1 text-[11px] text-gray-500">
+            <p className="mt-1 text-[11px] text-gray-300/60">
               {stats.lowStockProducts} low stock · {stats.outOfStock} sold out
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white/95 px-4 py-4 shadow-sm flex flex-col justify-between">
+          <div className={metricCardTint("health")}>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-500">
+              <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/70">
                 Health
               </p>
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
             </div>
-            <p className="mt-3 text-2xl font-semibold text-gray-900">
+            <p className="mt-3 text-2xl font-semibold text-white">
               {stats.processingOrders + stats.inTransitOrders > 0 ? "Live" : "Stable"}
             </p>
-            <p className="mt-1 text-[11px] text-gray-500">
+            <p className="mt-1 text-[11px] text-gray-300/60">
               Processing: {stats.processingOrders} · In-transit: {stats.inTransitOrders}
             </p>
           </div>
         </div>
 
-        {/* Navigation cards */}
+        {/* NAV CARDS */}
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Products */}
-          <Link
+          <DripLink
             href="/admin/products"
-            className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+              flex flex-col justify-between
+            "
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-gray-500">
+                <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
                   Manage
                 </p>
-                <h2 className="mt-1 text-sm font-semibold text-gray-900">
+                <h2 className="mt-1 text-sm font-semibold text-white">
                   Products
                 </h2>
               </div>
-              <span className="inline-flex h-7 px-3 rounded-full bg-black text-[11px] font-medium text-white items-center justify-center">
+              <span className={statusPill(`${stats.totalProducts} live`, "muted")}>
                 {stats.totalProducts} live
               </span>
             </div>
-            <p className="mt-3 text-xs text-gray-600">
-              Edit drops, adjust stock, and upload sneaker imagery for the next
-              release.
+            <p className="mt-3 text-[11px] text-gray-300/60">
+              Edit drops, adjust stock, and upload sneaker imagery for the next release.
             </p>
-            <div className="mt-4 flex items-center gap-1 text-[11px] text-gray-900">
-              <span>Open products panel</span>
-              <span className="group-hover:translate-x-[2px] transition-transform">
-                →
-              </span>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
             </div>
-          </Link>
+          </DripLink>
 
-          {/* Orders */}
-          <Link
+          <DripLink
             href="/admin/orders"
-            className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+              flex flex-col justify-between
+            "
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-gray-500">
+                <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
                   Monitor
                 </p>
-                <h2 className="mt-1 text-sm font-semibold text-gray-900">
+                <h2 className="mt-1 text-sm font-semibold text-white">
                   Orders
                 </h2>
               </div>
-              <span className="inline-flex h-7 px-3 rounded-full bg-gray-900 text-[11px] font-medium text-white items-center justify-center">
+              <span className={statusPill(`${stats.processingOrders + stats.inTransitOrders} active`, "blue")}>
                 {stats.processingOrders + stats.inTransitOrders} active
               </span>
             </div>
-            <p className="mt-3 text-xs text-gray-600">
-              Review order flow, update statuses, and watch drops move through
-              the pipeline.
+            <p className="mt-3 text-[11px] text-gray-300/60">
+              Review order flow, update statuses, and watch drops move through the pipeline.
             </p>
-            <div className="mt-4 flex items-center gap-1 text-[11px] text-gray-900">
-              <span>Open orders panel</span>
-              <span className="group-hover:translate-x-[2px] transition-transform">
-                →
-              </span>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
             </div>
-          </Link>
+          </DripLink>
 
-          {/* Analytics (replaces Categories) */}
-          <Link
+          <DripLink
             href="/admin/analytics"
-            className="group rounded-3xl border border-gray-200 bg-white/95 px-5 py-5 shadow-sm flex flex-col justify-between hover:border-black hover:-translate-y-[2px] hover:shadow-md transition-all"
+            className="
+              group rounded-[28px] border border-border bg-black/20 backdrop-blur
+              p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+              hover:bg-black/25 transition
+              flex flex-col justify-between
+            "
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-gray-500">
+                <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
                   Insights
                 </p>
-                <h2 className="mt-1 text-sm font-semibold text-gray-900">
+                <h2 className="mt-1 text-sm font-semibold text-white">
                   Analytics
                 </h2>
               </div>
-              <span className="inline-flex h-7 px-3 rounded-full bg-sky-600 text-[11px] font-medium text-white items-center justify-center">
-                Live
-              </span>
+              <span className={statusPill("Live", "pink")}>Live</span>
             </div>
-            <p className="mt-3 text-xs text-gray-600">
-              Visualize revenue, order volume, and product performance over
-              time.
+            <p className="mt-3 text-[11px] text-gray-300/60">
+              Visualize revenue, order volume, and product performance over time.
             </p>
-            <div className="mt-4 flex items-center gap-1 text-[11px] text-gray-900">
-              <span>Open analytics</span>
-              <span className="group-hover:translate-x-[2px] transition-transform">
-                →
-              </span>
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
+              Open <span className="opacity-70 group-hover:opacity-100">→</span>
             </div>
-          </Link>
+          </DripLink>
         </div>
 
-        {/* Mini recent orders preview */}
+        {/* LATEST ACTIVITY */}
         {!loading && orders.length > 0 && (
-          <div className="mt-2 space-y-3">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-900">
-                Latest activity
-              </p>
-              <Link
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+                  Latest
+                </p>
+                <p className="text-sm font-semibold text-white">Activity</p>
+              </div>
+
+              <DripLink
                 href="/admin/orders"
-                className="text-[11px] text-gray-600 underline underline-offset-4 hover:text-gray-900"
+                className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
               >
                 View all admin orders
-              </Link>
+              </DripLink>
             </div>
-            <div className="space-y-2">
+
+            <div className="grid gap-3 md:grid-cols-2">
               {orders
                 .slice()
                 .sort(
@@ -407,24 +462,26 @@ export default function AdminDashboardPage() {
                 .map((o) => (
                   <div
                     key={o.id}
-                    className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/80 px-3 py-2.5"
+                    className="
+                      rounded-[24px] border border-border bg-black/20 backdrop-blur
+                      p-4 flex items-center justify-between gap-4
+                    "
                   >
-                    <div>
-                      <p className="text-xs font-medium text-gray-900">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">
                         Order #{o.id}
                       </p>
-                      <p className="text-[11px] text-gray-500">
-                        {o.createdAt
-                          ? new Date(o.createdAt).toLocaleString()
-                          : "Unknown"}
+                      <p className="text-[11px] text-gray-300/60 truncate">
+                        {o.createdAt ? new Date(o.createdAt).toLocaleString() : "Unknown"}
                       </p>
                     </div>
+
                     <div className="text-right">
-                      <p className="text-xs font-semibold text-gray-900">
+                      <p className="text-sm font-semibold text-white">
                         ${Number(o.total || 0).toFixed(2)}
                       </p>
-                      <p className="text-[11px] text-gray-500">
-                        {o.status}
+                      <p className="text-[11px] text-gray-300/60">
+                        {String(o.status || "unknown").replaceAll("_", " ")}
                       </p>
                     </div>
                   </div>

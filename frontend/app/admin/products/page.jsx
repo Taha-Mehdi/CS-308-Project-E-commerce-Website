@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import DripLink from "../../../components/DripLink";
 import SiteLayout from "../../../components/SiteLayout";
 import ActionButton from "../../../components/ActionButton";
 import StockBadge from "../../../components/StockBadge";
@@ -21,6 +21,21 @@ function getCategoryLabel(categoryId) {
   if (!num) return "Uncategorized";
   const found = CATEGORY_OPTIONS.find((opt) => opt.id === num);
   return found ? found.label : `Category #${num}`;
+}
+
+function chipBase() {
+  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+}
+function chip(tone = "muted") {
+  const base = chipBase();
+  if (tone === "live") return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+  if (tone === "warn") return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
+  if (tone === "danger") return `${base} border-red-500/25 bg-red-500/10 text-red-200`;
+  return `${base} border-white/10 bg-white/5 text-gray-200/80`;
+}
+
+function panelClass() {
+  return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
 }
 
 export default function AdminProductsPage() {
@@ -47,7 +62,7 @@ export default function AdminProductsPage() {
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
-  const [editStock, setEditStock] = useState(""); // ✅ already existed; now editable in UI
+  const [editStock, setEditStock] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editModel, setEditModel] = useState("");
   const [editSerialNumber, setEditSerialNumber] = useState("");
@@ -95,9 +110,7 @@ export default function AdminProductsPage() {
       }
 
       const token =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("token")
-          : null;
+        typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
       try {
         // Products
@@ -126,21 +139,17 @@ export default function AdminProductsPage() {
       }
     }
 
-    if (!loadingUser) {
-      loadData();
-    }
+    if (!loadingUser) loadData();
   }, [apiBase, loadingUser, user]);
 
   // ---------- CREATE PRODUCT (with optional image) ----------
-
   async function handleCreateProduct(e) {
     e.preventDefault();
     if (!ensureAdmin()) return;
 
     let token = null;
-    if (typeof window !== "undefined") {
-      token = window.localStorage.getItem("token") || null;
-    }
+    if (typeof window !== "undefined") token = window.localStorage.getItem("token") || null;
+
     if (!token) {
       setMessage("Please login as admin.");
       return;
@@ -198,9 +207,7 @@ export default function AdminProductsPage() {
       if (newImageFile && created.id) {
         try {
           const imgRes = await uploadProductImage(created.id, newImageFile, token);
-          if (imgRes && imgRes.product) {
-            finalProduct = imgRes.product;
-          }
+          if (imgRes && imgRes.product) finalProduct = imgRes.product;
         } catch (err) {
           console.error("Image upload failed", err);
         }
@@ -229,9 +236,7 @@ export default function AdminProductsPage() {
   }
 
   // ---------- IMAGE UPLOAD (CREATE + INLINE REPLACE) ----------
-
   async function uploadProductImage(productId, file, tokenFromCaller) {
-    // Get token from caller or from localStorage
     let token = tokenFromCaller || null;
     if (!token && typeof window !== "undefined") {
       token = window.localStorage.getItem("token") || null;
@@ -275,7 +280,6 @@ export default function AdminProductsPage() {
   }
 
   // ---------- REVIEW ACTIONS (REAL API) ----------
-
   async function handleReviewAction(id, action) {
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -309,20 +313,17 @@ export default function AdminProductsPage() {
   }
 
   // ---------- EDIT PRODUCT ----------
-
   function startEdit(p) {
     setEditingId(p.id);
     setEditName(p.name || "");
     setEditPrice(String(p.price ?? ""));
-    setEditStock(String(p.stock ?? "")); // ✅ already
+    setEditStock(String(p.stock ?? ""));
     setEditDescription(p.description || "");
     setEditModel(p.model || "");
     setEditSerialNumber(p.serialNumber || "");
     setEditWarrantyStatus(p.warrantyStatus || "");
     setEditDistributorInfo(p.distributorInfo || "");
-    setEditCategory(
-      p.categoryId !== null && p.categoryId !== undefined ? String(p.categoryId) : ""
-    );
+    setEditCategory(p.categoryId !== null && p.categoryId !== undefined ? String(p.categoryId) : "");
   }
 
   function cancelEdit() {
@@ -340,15 +341,14 @@ export default function AdminProductsPage() {
 
   async function handleSaveEdit(productId) {
     if (!ensureAdmin()) return;
+
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-
     if (!token) {
       setMessage("Please login as admin.");
       return;
     }
 
-    // ✅ Validate quantity/stock (non-negative integer)
     const stockNumber = Number(editStock);
     if (!Number.isInteger(stockNumber) || stockNumber < 0) {
       setMessage("Stock must be a valid non-negative integer.");
@@ -362,7 +362,6 @@ export default function AdminProductsPage() {
     }
 
     setSavingEdit(true);
-
     const categoryId = editCategory ? Number(editCategory) : null;
 
     try {
@@ -376,7 +375,7 @@ export default function AdminProductsPage() {
           name: editName,
           description: editDescription,
           price: priceNumber,
-          stock: stockNumber, // ✅ quantity/stock is now properly editable
+          stock: stockNumber,
           isActive: true,
           model: editModel || "",
           serialNumber: editSerialNumber || "",
@@ -395,7 +394,7 @@ export default function AdminProductsPage() {
         const data = await safeJson(res);
         setMessage(data?.message || "Update failed");
       }
-    } catch (err) {
+    } catch {
       setMessage("Update failed");
     } finally {
       setSavingEdit(false);
@@ -403,14 +402,12 @@ export default function AdminProductsPage() {
   }
 
   // ---------- DELETE PRODUCT ----------
-
   async function handleDelete(productId) {
     if (!ensureAdmin()) return;
     if (!confirm("Delete this product?")) return;
 
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-
     if (!token) {
       setMessage("Please login as admin.");
       return;
@@ -429,165 +426,226 @@ export default function AdminProductsPage() {
         const data = await safeJson(res);
         setMessage(data?.message || "Delete failed");
       }
-    } catch (err) {
+    } catch {
       setMessage("Delete failed");
     } finally {
       setDeletingId(null);
     }
   }
 
-  // ---------- UI RENDER ----------
+  // ---------- SEARCH / FILTER ----------
+  const [query, setQuery] = useState("");
+  const filteredProducts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => {
+      const hay = `${p.name || ""} ${p.description || ""} ${p.model || ""} ${p.serialNumber || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [products, query]);
 
-  if (loadingUser)
+  // ---------- UI RENDER ----------
+  if (loadingUser) {
     return (
       <SiteLayout>
-        <p>Checking...</p>
+        <p className="text-sm text-gray-300/70">Checking admin access…</p>
       </SiteLayout>
     );
-  if (!user || user.roleId !== 1)
+  }
+
+  if (!user || user.roleId !== 1) {
     return (
       <SiteLayout>
-        <p>Access Denied</p>
+        <div className="space-y-4 py-6">
+          <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+            Admin
+          </p>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+            Access denied
+          </h1>
+          <p className="text-sm text-gray-300/70">
+            You need admin permissions to manage the catalog.
+          </p>
+          <DripLink
+            href="/"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+          >
+            Back to homepage
+          </DripLink>
+        </div>
       </SiteLayout>
     );
+  }
 
   return (
     <SiteLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+      <div className="space-y-8 py-6">
+        {/* HEADER */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
               Sneaks-up · Admin
             </p>
-            <h1 className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
               Product catalog
             </h1>
-          </div>
-          <Link href="/admin" className="text-[11px] underline hover:text-black">
-            Back to dashboard
-          </Link>
-        </div>
+            <p className="text-sm text-gray-300/70">
+              Create drops, manage stock, and approve reviews.
+            </p>
 
-        {/* PENDING REVIEWS SECTION */}
-        <div className="rounded-3xl border border-gray-200 bg-white/90 shadow-sm px-4 py-4 sm:px-5 sm:py-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
-                Pending reviews
-              </p>
-              <p className="text-xs text-gray-500">Approve comments to make them visible.</p>
+            <div className="pt-2 flex flex-wrap gap-2">
+              <span className={chip("muted")}>{products.length} products</span>
+              <span className={chip(pendingReviews.length ? "warn" : "muted")}>
+                {pendingReviews.length} pending reviews
+              </span>
+              <span className={chip("live")}>Live admin</span>
             </div>
-            <span className="text-[11px] text-gray-500">{pendingReviews.length} waiting</span>
           </div>
 
-          {pendingReviews.length === 0 ? (
-            <p className="text-sm text-gray-500">No pending reviews.</p>
-          ) : (
-            <div className="space-y-2">
-              {pendingReviews.map((rev) => (
-                <div
-                  key={rev.id}
-                  className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-900">User ID: {rev.userId}</p>
-                      <p className="text-[11px] text-gray-500">Product ID: {rev.productId}</p>
-                    </div>
-                    <span className="text-[11px] text-amber-600 font-semibold">
-                      {"★"
-                        .repeat(Math.max(1, Math.min(5, rev.rating || 1)))
-                        .padEnd(5, "☆")}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-700 mt-1 italic">"{rev.comment}"</p>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    <ActionButton
-                      size="xs"
-                      variant="success"
-                      onClick={() => handleReviewAction(rev.id, "approved")}
-                    >
-                      Approve
-                    </ActionButton>
-                    <ActionButton
-                      size="xs"
-                      variant="outline"
-                      onClick={() => handleReviewAction(rev.id, "rejected")}
-                    >
-                      Reject
-                    </ActionButton>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <DripLink
+              href="/admin"
+              className="h-10 px-5 inline-flex items-center justify-center rounded-full border border-border bg-white/5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10 transition active:scale-[0.98]"
+            >
+              Back to dashboard
+            </DripLink>
+          </div>
         </div>
 
-        {/* Message */}
         {message && (
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-800">
+          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
             {message}
           </div>
         )}
 
-        {/* Create product form */}
-        <form
-          onSubmit={handleCreateProduct}
-          className="rounded-3xl border border-gray-200 bg-white/95 shadow-sm shadow-black/5 px-4 py-4 sm:px-6 sm:py-6 space-y-5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* PENDING REVIEWS */}
+        <div className={panelClass()}>
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
-                New drop
+              <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                Pending reviews
               </p>
-              <p className="text-xs text-gray-500">
-                Add a new pair to the SNEAKS-UP catalog. Image is optional but highly recommended.
+              <p className="text-sm text-gray-200/80 mt-1">
+                Approve comments to make them visible.
               </p>
             </div>
-            <span className="text-[11px] text-gray-400">Fields marked * are required</span>
+            <span className={chip(pendingReviews.length ? "warn" : "muted")}>
+              {pendingReviews.length} waiting
+            </span>
           </div>
 
-          {/* Name / Price / Stock / Category */}
-          <div className="grid gap-4 sm:grid-cols-5">
-            <div className="sm:col-span-2 space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+          <div className="mt-4">
+            {pendingReviews.length === 0 ? (
+              <p className="text-sm text-gray-300/70">No pending reviews.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {pendingReviews.map((rev) => (
+                  <div
+                    key={rev.id}
+                    className="rounded-[24px] border border-white/10 bg-white/5 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white">
+                          Review #{rev.id}
+                        </p>
+                        <p className="text-[11px] text-gray-300/60">
+                          User: {rev.userId} · Product: {rev.productId}
+                        </p>
+                      </div>
+                      <span className={chip("muted")}>
+                        {"★"
+                          .repeat(Math.max(1, Math.min(5, rev.rating || 1)))
+                          .padEnd(5, "☆")}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-sm text-gray-200/80 italic">
+                      “{rev.comment}”
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <ActionButton
+                        size="xs"
+                        variant="success"
+                        onClick={() => handleReviewAction(rev.id, "approved")}
+                      >
+                        Approve
+                      </ActionButton>
+                      <ActionButton
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleReviewAction(rev.id, "rejected")}
+                      >
+                        Reject
+                      </ActionButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CREATE PRODUCT */}
+        <form onSubmit={handleCreateProduct} className={panelClass()}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                New drop
+              </p>
+              <p className="text-sm text-gray-200/80 mt-1">
+                Add a new pair to the catalog. Image is optional.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={creating}
+              className="
+                h-10 px-6 rounded-full
+                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                hover:opacity-95 transition active:scale-[0.98]
+                disabled:opacity-60 disabled:cursor-not-allowed
+              "
+            >
+              {creating ? "Creating…" : "Create product"}
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5 lg:col-span-2">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
                 Name *
               </label>
               <input
-                type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 required
-                className="w-full rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
                 placeholder="Air Burst Retro 'Night Fade'"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
                 Price *
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  $
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newPrice}
-                  onChange={(e) => setNewPrice(e.target.value)}
-                  required
-                  className="w-full rounded-full border border-gray-300 bg-white pl-6 pr-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
-                  placeholder="129.00"
-                />
-              </div>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                required
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                placeholder="129.00"
+              />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
                 Stock *
               </label>
               <input
@@ -597,20 +655,19 @@ export default function AdminProductsPage() {
                 value={newStock}
                 onChange={(e) => setNewStock(e.target.value)}
                 required
-                className="w-full rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
                 placeholder="24"
               />
             </div>
 
-            {/* CATEGORY DROPDOWN (Low / Mid / High Top) */}
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
                 Category
               </label>
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full rounded-full border border-gray-300 bg-white px-3 py-2 text-[11px] font-medium text-gray-900 uppercase tracking-[0.16em] focus:outline-none focus:ring-2 focus:ring-black/15"
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100 focus:outline-none focus:ring-2 focus:ring-white/15"
               >
                 <option value="">Select</option>
                 {CATEGORY_OPTIONS.map((opt) => (
@@ -620,429 +677,394 @@ export default function AdminProductsPage() {
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* Description + extra fields + Image upload */}
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.2fr)]">
-            <div className="space-y-4">
-              {/* Description */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
-                  Description
-                </label>
-                <textarea
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15 resize-none"
-                  placeholder="Story the drop — colorway, fit, materials, and why it hits different."
-                />
-              </div>
-
-              {/* Extra product details */}
-              <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-3 py-3 space-y-3">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
-                  Technical details
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                      Model
-                    </label>
-                    <input
-                      type="text"
-                      value={newModel}
-                      onChange={(e) => setNewModel(e.target.value)}
-                      className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                      placeholder="e.g. SB Dunk, ZX 8000"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                      Serial number
-                    </label>
-                    <input
-                      type="text"
-                      value={newSerialNumber}
-                      onChange={(e) => setNewSerialNumber(e.target.value)}
-                      className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                      placeholder="Manufacturer code"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                      Warranty status
-                    </label>
-                    <input
-                      type="text"
-                      value={newWarrantyStatus}
-                      onChange={(e) => setNewWarrantyStatus(e.target.value)}
-                      className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                      placeholder="e.g. 1 year official"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                      Distributor
-                    </label>
-                    <input
-                      type="text"
-                      value={newDistributorInfo}
-                      onChange={(e) => setNewDistributorInfo(e.target.value)}
-                      className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                      placeholder="e.g. Sneaks-Up TR"
-                    />
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-1.5 lg:col-span-2">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Description
+              </label>
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                rows={3}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15 resize-none"
+                placeholder="Story the drop — fit, materials, and why it hits different."
+              />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
-                Product image
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Image
               </label>
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50/80 px-3 py-3 flex flex-col gap-2 justify-between">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
-                  className="text-[11px] text-gray-700 file:text-[11px] file:px-3 file:py-1.5 file:rounded-full file:border file:border-gray-300 file:bg-white file:text-gray-800 file:mr-3 file:hover:bg-gray-100"
-                />
-                <p className="text-[11px] text-gray-500 leading-snug">
-                  Optional. JPEG/PNG recommended. You can also upload or change imagery later from the product list.
-                </p>
-              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
+                className="w-full text-[11px] text-gray-200 file:text-[11px] file:px-4 file:py-2 file:rounded-full file:border file:border-white/10 file:bg-white/5 file:text-gray-100 file:mr-3 file:hover:bg-white/10"
+              />
+              <p className="text-[11px] text-gray-300/55 leading-snug">
+                Optional. Recommended for clean product cards.
+              </p>
             </div>
-          </div>
 
-          {/* Create button row – clearly separated */}
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <button
-              type="submit"
-              disabled={creating}
-              className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-            >
-              {creating ? "Creating…" : "Create product"}
-            </button>
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Model
+              </label>
+              <input
+                value={newModel}
+                onChange={(e) => setNewModel(e.target.value)}
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                placeholder="SB Dunk"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Serial number
+              </label>
+              <input
+                value={newSerialNumber}
+                onChange={(e) => setNewSerialNumber(e.target.value)}
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                placeholder="Manufacturer code"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Warranty
+              </label>
+              <input
+                value={newWarrantyStatus}
+                onChange={(e) => setNewWarrantyStatus(e.target.value)}
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                placeholder="1 year official"
+              />
+            </div>
+
+            <div className="space-y-1.5 lg:col-span-2">
+              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                Distributor
+              </label>
+              <input
+                value={newDistributorInfo}
+                onChange={(e) => setNewDistributorInfo(e.target.value)}
+                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                placeholder="Sneaks-Up TR"
+              />
+            </div>
           </div>
         </form>
 
-        {/* Existing Products List */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-900">
-              Catalog ({products.length})
+        {/* CATALOG HEADER */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+              Catalog
             </p>
-            <p className="text-[11px] text-gray-500">
-              Click a card to update copy, price, stock, or imagery.
+            <p className="text-sm text-gray-200/80">
+              Edit drops, update stock, replace imagery.
             </p>
           </div>
 
-          {loading ? (
-            <p className="text-sm text-gray-500">Loading products…</p>
-          ) : products.length === 0 ? (
-            <p className="text-sm text-gray-500">No products yet. Start by creating your first drop above.</p>
-          ) : (
-            <div className="space-y-3">
-              {products.map((p) => {
-                const isEditing = editingId === p.id;
-                const priceNumber = Number(p.price || 0);
-                const imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
+          <div className="flex items-center gap-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, model, serial..."
+              className="h-10 w-full md:w-72 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+            />
+            <span className={chip("muted")}>{filteredProducts.length} shown</span>
+          </div>
+        </div>
 
-                const activeLabel = p.isActive === false ? "Inactive" : "Active";
-                const activeClasses =
-                  p.isActive === false
-                    ? "bg-gray-200 text-gray-700"
-                    : "bg-emerald-100 text-emerald-700";
+        {/* PRODUCT LIST */}
+        {loading ? (
+          <div className={panelClass()}>
+            <p className="text-sm text-gray-300/70">Loading products…</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className={panelClass()}>
+            <p className="text-sm text-gray-300/70">
+              No products match your search.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredProducts.map((p) => {
+              const isEditing = editingId === p.id;
+              const imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
 
-                return (
-                  <div
-                    key={p.id}
-                    className="rounded-3xl border border-gray-200 bg-white/95 px-4 py-4 sm:px-5 sm:py-5 shadow-sm shadow-black/5"
-                  >
-                    <div className="flex flex-col md:flex-row gap-4">
-                      {/* Image preview + upload */}
-                      <div className="flex flex-col items-center gap-2 md:w-40">
-                        <div className="w-32 h-32 rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center shadow-sm">
-                          {imageUrl ? (
-                            <img
-                              src={imageUrl}
-                              alt={p.name || "Drop image"}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 text-center px-2">
-                              No image yet
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={imageUploadingId === p.id}
-                          className="relative overflow-hidden rounded-full border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <label className="cursor-pointer">
-                            <span>
-                              {imageUploadingId === p.id
-                                ? "Uploading…"
-                                : imageUrl
-                                ? "Replace image"
-                                : "Upload image"}
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0] || null;
-                                if (!file) return;
-                                try {
-                                  await uploadProductImage(p.id, file);
-                                } catch (err) {
-                                  console.error("Inline image upload error:", err);
-                                }
-                              }}
-                            />
-                          </label>
-                        </button>
-                        <span
-                          className={`mt-1 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${activeClasses}`}
-                        >
-                          {activeLabel}
-                        </span>
+              const activeLabel = p.isActive === false ? "Inactive" : "Active";
+
+              return (
+                <div key={p.id} className={panelClass()}>
+                  <div className="flex flex-col lg:flex-row gap-5">
+                    {/* IMAGE */}
+                    <div className="flex flex-col items-start gap-2 w-full lg:w-[220px]">
+                      <div className="w-full aspect-square rounded-[24px] overflow-hidden border border-white/10 bg-white/5">
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt={p.name || "Drop image"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[11px] uppercase tracking-[0.28em] text-gray-300/50">
+                            No image
+                          </div>
+                        )}
                       </div>
 
-                      {/* Text & controls */}
-                      <div className="flex-1 space-y-3">
-                        {/* Top row: name + price + stock */}
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="w-full rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15"
-                              />
-                            ) : (
-                              <h2 className="text-sm sm:text-base font-semibold text-gray-900">
-                                {p.name}
-                              </h2>
-                            )}
-                            <p className="text-[11px] text-gray-500">ID: {p.id}</p>
-                            <p className="text-[11px] text-gray-500">
-                              Category: {getCategoryLabel(p.categoryId)}
-                            </p>
-                          </div>
+                      <button
+                        type="button"
+                        disabled={imageUploadingId === p.id}
+                        className="
+                          w-full h-10 rounded-full border border-border bg-white/5
+                          text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                          hover:bg-white/10 transition active:scale-[0.98]
+                          disabled:opacity-60 disabled:cursor-not-allowed
+                        "
+                      >
+                        <label className="w-full h-full flex items-center justify-center cursor-pointer">
+                          {imageUploadingId === p.id
+                            ? "Uploading…"
+                            : imageUrl
+                            ? "Replace image"
+                            : "Upload image"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0] || null;
+                              if (!file) return;
+                              try {
+                                await uploadProductImage(p.id, file);
+                              } catch (err) {
+                                console.error("Inline image upload error:", err);
+                              }
+                            }}
+                          />
+                        </label>
+                      </button>
 
-                          <div className="text-right space-y-1">
-                            <div>
-                              <span className="text-xs font-semibold text-gray-900">
-                                $
-                                {isEditing
-                                  ? Number(editPrice || 0).toFixed(2)
-                                  : priceNumber.toFixed(2)}
-                              </span>
-                            </div>
+                      <div className="flex flex-wrap gap-2">
+                        <span className={chip("muted")}>{activeLabel}</span>
+                        <span className={chip("muted")}>{getCategoryLabel(p.categoryId)}</span>
+                      </div>
+                    </div>
 
-                            <div className="flex justify-end">
-                              {isEditing ? (
-                                // ✅ CHANGED: stock is now editable in edit mode
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[11px] text-gray-500">Stock:</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={editStock}
-                                    onChange={(e) => setEditStock(e.target.value)}
-                                    className="w-24 rounded-full border border-gray-300 bg-white px-3 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10 text-right"
-                                  />
-                                </div>
-                              ) : (
-                                <StockBadge
-                                  stock={p.stock}
-                                  tone="muted"
-                                  className="text-[10px] px-2.5 py-1"
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Description + technical fields */}
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1.4fr)]">
-                          <div className="space-y-1">
-                            <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
-                              Description
-                            </p>
-                            {isEditing ? (
-                              <textarea
-                                value={editDescription}
-                                onChange={(e) => setEditDescription(e.target.value)}
-                                rows={2}
-                                className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/15 resize-none"
-                              />
-                            ) : (
-                              <p className="text-xs text-gray-600 leading-relaxed">
-                                {p.description || (
-                                  <span className="italic text-gray-400">No description set.</span>
-                                )}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Technical details (model, serial, warranty, distributor, category) */}
-                          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 px-3 py-3 space-y-2">
-                            <p className="text-[10px] uppercase tracking-[0.18em] text-gray-500">
-                              Specs
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
-                                  Model
-                                </p>
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={editModel}
-                                    onChange={(e) => setEditModel(e.target.value)}
-                                    className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                                  />
-                                ) : (
-                                  <p className="text-[11px] text-gray-800">{p.model || "—"}</p>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
-                                  Serial
-                                </p>
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={editSerialNumber}
-                                    onChange={(e) => setEditSerialNumber(e.target.value)}
-                                    className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                                  />
-                                ) : (
-                                  <p className="text-[11px] text-gray-800">
-                                    {p.serialNumber || "—"}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
-                                  Warranty
-                                </p>
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={editWarrantyStatus}
-                                    onChange={(e) => setEditWarrantyStatus(e.target.value)}
-                                    className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                                  />
-                                ) : (
-                                  <p className="text-[11px] text-gray-800">
-                                    {p.warrantyStatus || "Standard"}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
-                                  Distributor
-                                </p>
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={editDistributorInfo}
-                                    onChange={(e) => setEditDistributorInfo(e.target.value)}
-                                    className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                                  />
-                                ) : (
-                                  <p className="text-[11px] text-gray-800 truncate">
-                                    {p.distributorInfo || "Official store"}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.16em]">
-                                  Category
-                                </p>
-                                {isEditing ? (
-                                  <select
-                                    value={editCategory}
-                                    onChange={(e) => setEditCategory(e.target.value)}
-                                    className="w-full rounded-full border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-black/10"
-                                  >
-                                    <option value="">Uncategorized</option>
-                                    {CATEGORY_OPTIONS.map((opt) => (
-                                      <option key={opt.id} value={String(opt.id)}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <p className="text-[11px] text-gray-800">
-                                    {getCategoryLabel(p.categoryId)}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Edit / delete controls */}
-                        <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    {/* INFO */}
+                    <div className="flex-1 space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="space-y-1 min-w-0">
                           {isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveEdit(p.id)}
-                                disabled={savingEdit}
-                                className="px-3.5 py-1.75 rounded-full bg-black text-white text-[11px] font-semibold uppercase tracking-[0.18em] hover:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {savingEdit ? "Saving…" : "Save"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEdit}
-                                className="px-3.5 py-1.75 rounded-full border border-gray-300 bg-white text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </>
+                            <input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+                            />
                           ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startEdit(p)}
-                                className="px-3.5 py-1.75 rounded-full border border-gray-300 bg-white text-[11px] font-medium text-gray-800 hover:bg-gray-100 transition-colors"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(p.id)}
-                                disabled={deletingId === p.id}
-                                className="px-3.5 py-1.75 rounded-full bg-red-600 text-white text-[11px] font-semibold uppercase tracking-[0.18em] hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {deletingId === p.id ? "Deleting…" : "Delete"}
-                              </button>
-                            </>
+                            <h2 className="text-lg font-semibold text-white truncate">
+                              {p.name}
+                            </h2>
+                          )}
+
+                          <p className="text-[11px] text-gray-300/60">
+                            ID: {p.id} · Model: {p.model || "—"} · Serial: {p.serialNumber || "—"}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">
+                                $
+                              </span>
+                              <input
+                                value={editPrice}
+                                onChange={(e) => setEditPrice(e.target.value)}
+                                className="h-11 w-28 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-white/15"
+                              />
+                            </div>
+                          ) : (
+                            <p className="text-lg font-semibold text-white">
+                              ${Number(p.price || 0).toFixed(2)}
+                            </p>
+                          )}
+
+                          {!isEditing ? (
+                            <StockBadge
+                              stock={p.stock}
+                              tone="muted"
+                              className="border-white/10 bg-white/5 text-gray-100/80"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">
+                                Stock
+                              </span>
+                              <input
+                                value={editStock}
+                                onChange={(e) => setEditStock(e.target.value)}
+                                className="h-11 w-24 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-white/15"
+                              />
+                            </div>
                           )}
                         </div>
+                      </div>
+
+                      {/* DESCRIPTION */}
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                          Description
+                        </p>
+                        {isEditing ? (
+                          <textarea
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            rows={3}
+                            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15 resize-none"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-200/80 leading-relaxed">
+                            {p.description || (
+                              <span className="text-gray-300/50 italic">
+                                No description set.
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* SPECS */}
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
+                            Warranty
+                          </p>
+                          {isEditing ? (
+                            <input
+                              value={editWarrantyStatus}
+                              onChange={(e) => setEditWarrantyStatus(e.target.value)}
+                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+                            />
+                          ) : (
+                            <p className="mt-2 text-sm text-gray-200/80">
+                              {p.warrantyStatus || "Standard"}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
+                            Distributor
+                          </p>
+                          {isEditing ? (
+                            <input
+                              value={editDistributorInfo}
+                              onChange={(e) => setEditDistributorInfo(e.target.value)}
+                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+                            />
+                          ) : (
+                            <p className="mt-2 text-sm text-gray-200/80 truncate">
+                              {p.distributorInfo || "Official store"}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
+                            Category
+                          </p>
+                          {isEditing ? (
+                            <select
+                              value={editCategory}
+                              onChange={(e) => setEditCategory(e.target.value)}
+                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+                            >
+                              <option value="">Uncategorized</option>
+                              {CATEGORY_OPTIONS.map((opt) => (
+                                <option key={opt.id} value={String(opt.id)}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="mt-2 text-sm text-gray-200/80">
+                              {getCategoryLabel(p.categoryId)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ACTIONS */}
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-white/10">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(p.id)}
+                              disabled={savingEdit}
+                              className="
+                                h-10 px-5 rounded-full
+                                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                                hover:opacity-95 transition active:scale-[0.98]
+                                disabled:opacity-60 disabled:cursor-not-allowed
+                              "
+                            >
+                              {savingEdit ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              className="
+                                h-10 px-5 rounded-full border border-border bg-white/5
+                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                                hover:bg-white/10 transition active:scale-[0.98]
+                              "
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEdit(p)}
+                              className="
+                                h-10 px-5 rounded-full border border-border bg-white/5
+                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                                hover:bg-white/10 transition active:scale-[0.98]
+                              "
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(p.id)}
+                              disabled={deletingId === p.id}
+                              className="
+                                h-10 px-5 rounded-full bg-red-600
+                                text-[11px] font-semibold uppercase tracking-[0.18em] text-white
+                                hover:bg-red-700 transition active:scale-[0.98]
+                                disabled:opacity-60 disabled:cursor-not-allowed
+                              "
+                            >
+                              {deletingId === p.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </SiteLayout>
   );
