@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+
 import SiteLayout from "../components/SiteLayout";
 import ProductCard from "../components/ProductCard";
 import { useAuth } from "../context/AuthContext";
@@ -14,7 +15,9 @@ export default function HomePage() {
 
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+  // -------------------------
   // Load products
+  // -------------------------
   useEffect(() => {
     async function loadProducts() {
       setLoading(true);
@@ -29,6 +32,7 @@ export default function HomePage() {
         try {
           data = await res.json();
         } catch {}
+
         setProducts(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Products load error:", err);
@@ -38,19 +42,23 @@ export default function HomePage() {
       }
     }
 
-    loadProducts();
+    if (apiBase) loadProducts();
   }, [apiBase]);
 
-  // Auto-rotate live image
+  // -------------------------
+  // Auto-rotate
+  // -------------------------
   useEffect(() => {
     if (!products.length) return;
     const interval = setInterval(() => {
       setLiveIndex((prev) => (prev + 1) % products.length);
-    }, 2500);
+    }, 2400);
     return () => clearInterval(interval);
   }, [products]);
 
-  // Shuffle for random sections
+  // -------------------------
+  // Product lists
+  // -------------------------
   const shuffledProducts = useMemo(() => {
     if (!products.length) return [];
     const arr = [...products];
@@ -70,194 +78,192 @@ export default function HomePage() {
     ? products.slice(4, 8)
     : products.slice(0, 4);
 
-  const liveProduct =
-    products.length > 0 ? products[liveIndex % products.length] : null;
+  // -------------------------
+  // Helpers
+  // -------------------------
+  const formatPrice = (p) => {
+    const n = Number(p);
+    if (Number.isFinite(n)) return `$${n.toFixed(2)}`;
+    return "";
+  };
 
-  const liveImageUrl =
-    liveProduct?.imageUrl ? `${apiBase}${liveProduct.imageUrl}` : null;
+  const safeIndex = (i) => {
+    if (!products.length) return 0;
+    const n = products.length;
+    return ((i % n) + n) % n;
+  };
+
+  const productAt = (offset = 0) => {
+    if (!products.length) return null;
+    return products[safeIndex(liveIndex + offset)];
+  };
+
+  const imageUrlOf = (prod) => {
+    if (!prod?.imageUrl) return null;
+    return `${apiBase}${prod.imageUrl}`;
+  };
+
+  // Discover carousel products
+  const p0 = productAt(0);
+  const p1 = productAt(1);
+  const p2 = productAt(2);
+  const p3 = productAt(3);
+
+  const img0 = imageUrlOf(p0);
+  const img1 = imageUrlOf(p1);
+  const img2 = imageUrlOf(p2);
+  const img3 = imageUrlOf(p3);
 
   return (
     <SiteLayout>
       <div className="space-y-10 sm:space-y-12">
-        {/* HERO SECTION (cleaner + more premium) */}
-        <section className="relative overflow-hidden rounded-[32px] border border-border bg-surface p-5 sm:p-8">
-          {/* background glow */}
+        {/* =========================
+           HERO
+           ========================= */}
+        <section className="relative overflow-hidden rounded-[44px] border border-border bg-surface p-4 sm:p-6">
           <div
             className="
               pointer-events-none absolute inset-0
-              bg-[radial-gradient(900px_circle_at_18%_18%,rgba(168,85,247,0.20),transparent_52%),radial-gradient(900px_circle_at_78%_38%,rgba(251,113,133,0.16),transparent_58%)]
+              bg-[radial-gradient(1100px_circle_at_10%_18%,rgba(168,85,247,0.26),transparent_56%),radial-gradient(1000px_circle_at_92%_40%,rgba(251,113,133,0.18),transparent_60%)]
             "
           />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/25" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/16 via-transparent to-black/24" />
+          <div className="pointer-events-none absolute inset-0 opacity-80 bg-[radial-gradient(1200px_circle_at_55%_45%,rgba(255,255,255,0.06),transparent_60%)]" />
 
-          <div className="relative flex flex-col md:flex-row gap-8 items-center">
-            {/* Left copy */}
-            <div className="flex-1">
-              <p className="text-[11px] font-semibold tracking-[0.26em] uppercase text-gray-300/70">
-                Sneaker heaven
-              </p>
-
-              <h1 className="mt-3 text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight tracking-tight text-foreground">
-                Discover the next{" "}
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]">
-                  sneaker drop
-                </span>
-                .
-              </h1>
-
-              <p className="mt-4 text-sm sm:text-base text-gray-300/85 max-w-xl">
-                A hype-driven marketplace for limited pairs, clean daily
-                rotation, and everything in between.
-              </p>
-
-              {/* Only 2 buttons now */}
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/products"
-                  className="
-                    px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold uppercase tracking-[0.12em]
-                    bg-primary text-black hover:opacity-95 transition active:scale-[0.98]
-                  "
-                >
-                  Browse drops
-                </Link>
-
-                <Link
-                  href="/cart"
-                  className="
-                    px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold uppercase tracking-[0.12em]
-                    border border-border text-foreground hover:bg-white/10 transition active:scale-[0.98]
-                  "
-                >
-                  View bag
-                </Link>
-              </div>
-
-              {/* small, clean counter (replaces the removed chips) */}
-              <div className="mt-7 text-[11px] text-gray-300/70">
-                {products.length ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5">
-                    <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent-2)]" />
-                    {products.length} live pairs
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-border bg-black/20 px-3 py-1.5">
-                    <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent)]" />
-                    Loading drops…
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Square live drop card */}
-            <div className="flex-1 max-w-md w-full">
+          <div className="relative grid gap-4 md:gap-5 md:grid-cols-[1.15fr_0.85fr] items-center">
+            {/* Left: SQUARE VIDEO */}
+            <div className="relative">
               <div
                 className="
-                  rounded-[28px] overflow-hidden
-                  border border-border
-                  bg-[color-mix(in_oklab,var(--background)_80%,black_20%)]
-                  shadow-[0_18px_55px_rgba(0,0,0,0.45)]
+                  relative rounded-[36px] overflow-hidden
+                  border border-border bg-black/15
+                  shadow-[0_26px_90px_rgba(0,0,0,0.58)]
                 "
               >
-                {/* header */}
-                <div className="px-5 pt-5 pb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block size-2.5 rounded-full bg-[var(--drip-accent)] shadow-[0_0_12px_rgba(168,85,247,0.65)] animate-pulse" />
-                    <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-200">
-                      Live drop
-                    </p>
+                <div className="absolute left-4 top-4 z-10">
+                  <div
+                    className="
+                      inline-flex items-center gap-2 rounded-full px-3.5 py-1.5
+                      border border-[color-mix(in_oklab,var(--drip-accent)_55%,transparent)]
+                      bg-black/45 backdrop-blur
+                      shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+                    "
+                  >
+                    <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent)] shadow-[0_0_18px_rgba(168,85,247,0.85)]" />
+                    <span className="text-[11px] font-semibold tracking-[0.26em] uppercase text-white">
+                      Drop culture
+                    </span>
                   </div>
-                  <span className="text-[10px] text-gray-300/70">
-                    {products.length ? `${products.length} pairs` : ""}
-                  </span>
                 </div>
 
-                {/* SQUARE IMAGE */}
-                <div className="px-5 pb-5">
-                  <div className="relative rounded-[22px] overflow-hidden border border-white/10 bg-black/25 aspect-square">
-                    {/* overlay fade */}
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+                <div className="w-full aspect-square">
+                  <video
+                    className="block w-full h-full object-cover"
+                    src="/spotlight.mp4"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                  />
+                </div>
 
-                    {loading ? (
-                      <div className="h-full w-full grid place-items-center">
-                        <div className="text-xs text-gray-300/70">Loading…</div>
-                      </div>
-                    ) : !liveImageUrl ? (
-                      <div className="h-full w-full grid place-items-center">
-                        <span className="text-[10px] uppercase tracking-[0.2em] text-gray-300/70">
-                          Sneaks
-                        </span>
-                      </div>
-                    ) : (
-                      <img
-                        src={liveImageUrl}
-                        alt={liveProduct?.name || "Live drop"}
-                        className="w-full h-full object-cover"
-                      />
-                    )}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                    {/* price chip (top-left) */}
-                    {liveProduct?.price != null && (
-                      <div className="absolute left-4 top-4">
-                        <div
-                          className="
-                            inline-flex items-center gap-2 rounded-full px-3 py-1.5
-                            border border-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]
-                            bg-black/55 backdrop-blur
-                            shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-                          "
-                        >
-                          <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent-2)]" />
-                          <span className="text-[12px] font-semibold text-white">
-                            ${Number(liveProduct.price).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                <div className="absolute left-5 right-5 bottom-5">
+                  <div className="flex items-end justify-between gap-3">
+                    <p className="text-base sm:text-lg font-semibold text-white leading-tight">
+                      Built to turn heads.
+                    </p>
 
-                    {/* name strip (bottom) */}
-                    <div className="absolute left-4 right-4 bottom-4">
-                      <p className="text-[12px] font-semibold text-white line-clamp-1">
-                        {liveProduct?.name || "Live drop"}
-                      </p>
-
-                      {/* sleek micro underline */}
-                      <div className="mt-2 h-[2px] w-full rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] opacity-90"
-                          style={{
-                            width: products.length
-                              ? `${32 + ((liveIndex % 5) * 12)}%`
-                              : "44%",
-                          }}
-                        />
+                    <div className="hidden sm:block">
+                      <div className="h-[2px] w-28 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] opacity-90 w-[78%]" />
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* removed: Rotating highlights + See all */}
+            {/* Right: TEXT */}
+            <div className="relative">
+              <div className="hidden md:block pointer-events-none absolute -left-2 top-6 bottom-6 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent" />
+
+              <div className="relative px-1 sm:px-2 md:pl-6">
+                <h1 className="mt-1 text-[34px] sm:text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-tight text-foreground">
+                  The home of the <span className="text-white/95">next</span>{" "}
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]">
+                    sneaker drop
+                  </span>
+                  .
+                </h1>
+
+                <p className="mt-4 text-sm sm:text-base text-gray-300/85 max-w-xl">
+                  A premium rotation of limited pairs — discover what’s live and
+                  move fast when the drop hits.
+                </p>
+
+                <div className="mt-8">
+                  <Link
+                    href="/products"
+                    className="
+                      group relative inline-flex items-center justify-center
+                      px-8 py-4 rounded-full
+                      text-xs sm:text-sm font-semibold uppercase tracking-[0.18em]
+                      text-foreground
+                      border border-white/15 bg-white/[0.06] backdrop-blur
+                      hover:bg-white/[0.10] transition active:scale-[0.98]
+                      shadow-[0_22px_80px_rgba(0,0,0,0.25)]
+                      overflow-hidden
+                    "
+                  >
+                    <span className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 bg-[radial-gradient(180px_circle_at_25%_40%,rgba(255,255,255,0.18),transparent_55%)]" />
+                    <span className="pointer-events-none absolute -inset-10 opacity-40 bg-[radial-gradient(300px_circle_at_70%_40%,rgba(168,85,247,0.20),transparent_60%)]" />
+                    <span className="relative flex items-center gap-2">
+                      View drops
+                      <span className="inline-block translate-x-0 group-hover:translate-x-0.5 transition">
+                        →
+                      </span>
+                    </span>
+                  </Link>
+                </div>
+
+                <div className="mt-8 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                <p className="mt-4 text-[12px] text-gray-300/70 max-w-xl">
+                  Built by sneakerheads, for sneakerheads.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* FEATURED */}
+        {/* =========================
+              FEATURED
+           ========================= */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-300/70 uppercase">
+              <p className="text-[11px] font-semibold tracking-[0.22em] text-gray-300/70 uppercase">
                 Featured
               </p>
-              <h2 className="text-sm sm:text-base font-semibold text-foreground">
-                Spotlight drops
+              <h2 className="mt-1 text-base sm:text-lg font-semibold text-foreground">
+                Spotlight featured
               </h2>
+              <p className="mt-1 text-[12px] text-gray-300/70">
+                The cleanest picks, highlighted right now.
+              </p>
             </div>
+
             <Link
               href="/products"
-              className="text-[11px] text-gray-300/80 underline hover:text-white"
+              className="
+                text-[11px] font-semibold uppercase tracking-[0.18em]
+                rounded-full border border-border bg-black/20 px-4 py-2
+                hover:bg-white/10 transition
+              "
             >
-              View all drops
+              Shop
             </Link>
           </div>
 
@@ -272,13 +278,183 @@ export default function HomePage() {
           )}
         </section>
 
+        {/* =========================
+           DISCOVER (TWO SECTIONS: TEXT + TALL CAROUSEL)
+           ========================= */}
+        <section className="relative overflow-hidden rounded-[44px] border border-border bg-surface p-4 sm:p-6">
+          <div
+            className="
+              pointer-events-none absolute inset-0
+              bg-[radial-gradient(1100px_circle_at_16%_20%,rgba(168,85,247,0.20),transparent_56%),radial-gradient(1100px_circle_at_88%_52%,rgba(251,113,133,0.12),transparent_62%)]
+            "
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/14 via-transparent to-black/20" />
+
+          <div className="relative grid gap-6 md:grid-cols-[0.95fr_1.05fr] items-center">
+            {/* Left: TEXT */}
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-2">
+                <span className="inline-block size-2 rounded-full bg-[var(--drip-accent)] shadow-[0_0_18px_rgba(168,85,247,0.8)]" />
+                <span className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-200/80">
+                  Live rotation
+                </span>
+              </div>
+
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-semibold leading-tight tracking-tight text-foreground">
+                Discover the next{" "}
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]">
+                  drop
+                </span>{" "}
+                before it disappears.
+              </h2>
+
+              <p className="text-sm sm:text-base text-gray-300/85 max-w-xl">
+                The lineup updates automatically. When something hits, you’ll see
+                it here first.
+              </p>
+
+              <div className="pt-2">
+                <Link
+                  href="/products"
+                  className="
+                    group relative inline-flex items-center justify-center
+                    px-7 py-3.5 rounded-full
+                    text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
+                    text-foreground
+                    border border-white/15 bg-white/[0.06] backdrop-blur
+                    hover:bg-white/[0.10] transition active:scale-[0.98]
+                    shadow-[0_18px_70px_rgba(0,0,0,0.20)]
+                    overflow-hidden
+                  "
+                >
+                  <span className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 bg-[radial-gradient(160px_circle_at_25%_40%,rgba(255,255,255,0.16),transparent_55%)]" />
+                  <span className="pointer-events-none absolute -inset-10 opacity-35 bg-[radial-gradient(280px_circle_at_70%_40%,rgba(168,85,247,0.18),transparent_62%)]" />
+                  <span className="relative flex items-center gap-2">
+                    Explore rotation <span className="group-hover:translate-x-0.5 transition">→</span>
+                  </span>
+                </Link>
+              </div>
+
+              <div className="pt-3 flex items-center gap-2">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <span
+                    key={i}
+                    className={[
+                      "h-1.5 w-1.5 rounded-full transition",
+                      i === (products.length ? liveIndex % 5 : 0)
+                        ? "bg-[var(--drip-accent)] shadow-[0_0_14px_rgba(168,85,247,0.7)]"
+                        : "bg-white/20",
+                    ].join(" ")}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Right: TALL MAIN CARD + THUMBS */}
+            <div className="w-full">
+              <div className="relative">
+                <div className="pointer-events-none absolute -inset-10 rounded-[64px] bg-[radial-gradient(520px_circle_at_45%_35%,rgba(168,85,247,0.18),transparent_60%),radial-gradient(650px_circle_at_70%_60%,rgba(251,113,133,0.10),transparent_65%)]" />
+
+                <div className="grid gap-4 sm:gap-5 sm:grid-cols-[1fr_110px] items-center">
+                  {/* Main tall product card */}
+                  <div className="relative">
+                    <div className="relative aspect-[4/5] sm:aspect-[3/4] rounded-[34px] overflow-hidden shadow-[0_34px_130px_rgba(0,0,0,0.55)]">
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+
+                      {loading ? (
+                        <div className="h-full w-full grid place-items-center">
+                          <div className="text-xs text-gray-300/70">
+                            Loading…
+                          </div>
+                        </div>
+                      ) : !img0 ? (
+                        <div className="h-full w-full grid place-items-center">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-gray-300/70">
+                            No products yet
+                          </span>
+                        </div>
+                      ) : (
+                        <img
+                          src={img0}
+                          alt={p0?.name || "Product"}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+
+                      {!!p0 && (
+                        <div className="absolute left-5 right-5 bottom-5">
+                          <div className="flex items-end justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] tracking-[0.26em] uppercase text-gray-200/70">
+                                Now rotating
+                              </p>
+                              <p className="mt-1 text-base sm:text-lg font-semibold text-white line-clamp-1">
+                                {p0?.name || "Product"}
+                              </p>
+                            </div>
+
+                            {!!formatPrice(p0?.price) && (
+                              <div className="shrink-0 rounded-full px-4 py-2 border border-white/12 bg-black/45 backdrop-blur text-[12px] font-semibold text-white shadow-[0_14px_55px_rgba(0,0,0,0.35)]">
+                                {formatPrice(p0?.price)}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-3 h-[2px] w-full rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] opacity-95"
+                              style={{
+                                width: products.length
+                                  ? `${48 + ((liveIndex % 5) * 10)}%`
+                                  : "60%",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Thumbnails */}
+                  <div className="hidden sm:flex flex-col gap-3">
+                    {[p1, p2, p3].map((p, i) => {
+                      const u = imageUrlOf(p);
+                      return (
+                        <div
+                          key={p?.id ?? i}
+                          className="relative overflow-hidden rounded-[18px] aspect-square border border-white/10 shadow-[0_14px_55px_rgba(0,0,0,0.25)] opacity-85"
+                        >
+                          {u ? (
+                            <img
+                              src={u}
+                              alt={p?.name || "Up next"}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full grid place-items-center bg-white/5">
+                              <span className="text-[10px] uppercase tracking-[0.2em] text-gray-300/60">
+                                Next
+                              </span>
+                            </div>
+                          )}
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* NEW ARRIVALS */}
         <section className="space-y-4">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-300/70 uppercase">
               New arrivals
             </p>
-            <h2 className="text-sm sm:text-base font-semibold text-foreground">
+            <h2 className="mt-1 text-base sm:text-lg font-semibold text-foreground">
               Fresh on the shelf
             </h2>
           </div>
@@ -294,13 +470,86 @@ export default function HomePage() {
           )}
         </section>
 
+        {/* POSTERS */}
+        <section className="relative overflow-hidden rounded-[44px] border border-border bg-surface p-4 sm:p-6">
+          <div
+            className="
+              pointer-events-none absolute inset-0
+              bg-[radial-gradient(1100px_circle_at_20%_18%,rgba(168,85,247,0.16),transparent_55%),radial-gradient(1100px_circle_at_90%_55%,rgba(251,113,133,0.12),transparent_62%)]
+            "
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/12 via-transparent to-black/18" />
+
+          <div className="relative text-center">
+            <h2 className="text-xl sm:text-2xl font-semibold text-foreground">
+              Campaign classics. Studio energy.
+            </h2>
+            <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          </div>
+
+          <div className="relative mt-6 grid gap-5 lg:grid-cols-3 items-stretch">
+            {[
+              {
+                src: "/posters/poster-1.jpg",
+                kicker: "Featured print",
+                title: "NIKE • Window Takeover",
+              },
+              {
+                src: "/posters/poster-2.jpg",
+                kicker: "Archive",
+                title: "AIR • Courting a Legend",
+              },
+              {
+                src: "/posters/poster-3.jpg",
+                kicker: "Studio cut",
+                title: "AIR MAX • Just do it",
+              },
+            ].map((p, idx) => (
+              <div
+                key={p.src}
+                className={[
+                  "group relative overflow-hidden rounded-[30px]",
+                  "border border-white/10",
+                  "shadow-[0_30px_110px_rgba(0,0,0,0.50)]",
+                  "transition duration-300 hover:-translate-y-1",
+                  idx === 1 ? "lg:-translate-y-2" : "",
+                ].join(" ")}
+              >
+                <div className="pointer-events-none absolute -inset-10 opacity-0 group-hover:opacity-100 transition duration-300 bg-[radial-gradient(520px_circle_at_35%_25%,rgba(168,85,247,0.22),transparent_60%)]" />
+
+                <div className="relative aspect-[3/4] md:aspect-[4/5] lg:aspect-[3/4]">
+                  <img
+                    src={p.src}
+                    alt={p.title}
+                    className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/12 to-transparent" />
+
+                  <div className="absolute left-5 right-5 bottom-5">
+                    <p className="text-[10px] tracking-[0.28em] uppercase text-gray-200/75">
+                      {p.kicker}
+                    </p>
+                    <p className="mt-1 text-base sm:text-lg font-semibold text-white leading-tight">
+                      {p.title}
+                    </p>
+
+                    <div className="mt-3 h-[2px] w-24 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full w-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] opacity-95" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* MOST WANTED */}
         <section className="space-y-4">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.2em] text-gray-300/70 uppercase">
               Most wanted
             </p>
-            <h2 className="text-sm sm:text-base font-semibold text-foreground">
+            <h2 className="mt-1 text-base sm:text-lg font-semibold text-foreground">
               Hype picks from the vault
             </h2>
           </div>
