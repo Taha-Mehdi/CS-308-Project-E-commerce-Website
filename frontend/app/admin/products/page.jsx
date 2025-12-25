@@ -248,8 +248,10 @@ export default function AdminProductsPage() {
         return;
       }
 
-      const updated = await res.json();
-      setProducts((prev) => prev.map((p) => (p.id === productId ? updated : p)));
+      const data = await res.json();
+      const updatedProduct = data.product || data;
+
+      setProducts((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
       setMessage("Image updated.");
     } catch (err) {
       console.error("Upload image error:", err);
