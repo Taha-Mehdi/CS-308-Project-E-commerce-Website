@@ -631,9 +631,9 @@ export default function HomePage() {
           {/* ✅ One line on desktop, taller cards */}
           <div className="relative mt-6 grid gap-5 grid-cols-1 md:grid-cols-3 items-stretch">
             {[
-              { src: "/posters/poster-1.jpg", kicker: "Featured print", title: "NIKE • Window Takeover" },
-              { src: "/posters/poster-2.jpg", kicker: "Archive", title: "AIR • Courting a Legend" },
-              { src: "/posters/poster-3.jpg", kicker: "Studio cut", title: "AIR MAX • Just do it" },
+              { src: "/posters/poster-1.jpg"},
+              { src: "/posters/poster-2.jpg"},
+              { src: "/posters/poster-3.jpg"},
             ].map((p) => (
               <div
                 key={p.src}
