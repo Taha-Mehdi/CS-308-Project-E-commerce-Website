@@ -1,7 +1,4 @@
 const jwt = require("jsonwebtoken");
-const { db } = require("../db");
-const { roles } = require("../db/schema");
-const { eq } = require("drizzle-orm");
 
 function getBearerToken(req) {
   const authHeader = req.headers.authorization;
@@ -24,12 +21,12 @@ function authMiddleware(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // IMPORTANT: only allow access tokens here
+    // Only allow access tokens here
     if (!payload || payload.type !== "access") {
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    req.user = payload; // { id, email, roleId, roleName?, type:'access' }
+    req.user = payload; // { id, email, roleId, roleName, type:'access' }
     return next();
   } catch (err) {
     if (err && err.name === "TokenExpiredError") {
@@ -67,68 +64,59 @@ function optionalAuthMiddleware(req, res, next) {
   }
 }
 
-// Role lookup with small in-memory cache
-const roleCache = new Map(); // roleId -> { name, expiresAtMs }
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
-
-async function getRoleNameById(roleId) {
-  const rid = Number(roleId);
-  if (!Number.isInteger(rid)) return null;
-
-  const cached = roleCache.get(rid);
-  const now = Date.now();
-  if (cached && cached.expiresAtMs > now) return cached.name;
-
-  const rows = await db.select().from(roles).where(eq(roles.id, rid));
-  const name = rows.length ? rows[0].name : null;
-
-  roleCache.set(rid, { name, expiresAtMs: now + ROLE_CACHE_TTL_MS });
-  return name;
-}
-
-function requireRoleNames(allowedRoleNames) {
-  const allowed = new Set(allowedRoleNames);
-
-  return async function roleGuard(req, res, next) {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      // Prefer roleName from JWT if present, else fetch by roleId
-      let roleName = req.user.roleName;
-      if (!roleName) {
-        const roleId = Number(req.user.roleId);
-        roleName = await getRoleNameById(roleId);
-      }
-
-      if (!roleName) {
-        return res.status(403).json({ message: "Role not recognized" });
-      }
-
-      if (!allowed.has(roleName)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      // attach for downstream usage
-      req.user.roleName = roleName;
-
-      return next();
-    } catch (err) {
-      console.error("Role guard error:", err);
-      return res.status(500).json({ message: "Authorization check failed" });
+// 🔒 STRICT single-role guard
+function requireRole(roleName) {
+  return function roleGuard(req, res, next) {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
+
+    const actual = req.user.roleName || null;
+    if (!actual) {
+      return res.status(403).json({ message: "Role not recognized" });
+    }
+
+    if (actual !== roleName) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    return next();
   };
 }
 
-const requireAdmin = requireRoleNames(["admin"]);
-const requireSalesManagerOrAdmin = requireRoleNames(["admin", "sales_manager"]);
-const requireProductManagerOrAdmin = requireRoleNames(["admin", "product_manager"]);
+// 🔒 Explicit multi-role guard
+function requireAnyRole(roleNames) {
+  const allowed = new Set(roleNames);
+
+  return function anyRoleGuard(req, res, next) {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const actual = req.user.roleName || null;
+    if (!actual) {
+      return res.status(403).json({ message: "Role not recognized" });
+    }
+
+    if (!allowed.has(actual)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    return next();
+  };
+}
+
+const requireAdmin = requireRole("admin");
+const requireSalesManager = requireRole("sales_manager");
+const requireProductManager = requireRole("product_manager");
+const requireProductManagerOrAdmin = requireAnyRole(["product_manager", "admin"]);
 
 module.exports = {
   authMiddleware,
   optionalAuthMiddleware,
+
   requireAdmin,
-  requireSalesManagerOrAdmin,
+  requireSalesManager,
+  requireProductManager,
   requireProductManagerOrAdmin,
 };

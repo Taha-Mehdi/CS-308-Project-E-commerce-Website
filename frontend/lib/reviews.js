@@ -31,9 +31,16 @@ export function getAllReviews() {
   return loadAll();
 }
 
-export function addReview({ productId, rating, comment, userEmail, productName }) {
+export function addReview({
+  productId,
+  rating,
+  comment,
+  userEmail,
+  productName,
+}) {
   const all = loadAll();
   const id = Date.now() + Math.floor(Math.random() * 1e6);
+
   const review = {
     id,
     productId: Number(productId),
@@ -44,6 +51,7 @@ export function addReview({ productId, rating, comment, userEmail, productName }
     status: "pending",
     createdAt: new Date().toISOString(),
   };
+
   all.push(review);
   persist(all);
   return review;
@@ -53,6 +61,7 @@ export function updateReviewStatus(id, status) {
   const all = loadAll();
   const idx = all.findIndex((r) => r.id === id);
   if (idx === -1) return null;
+
   all[idx] = { ...all[idx], status };
   persist(all);
   return all[idx];

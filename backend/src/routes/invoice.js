@@ -3,7 +3,7 @@ const PDFDocument = require("pdfkit");
 const { db } = require("../db");
 const { orders, orderItems, users } = require("../db/schema");
 const { eq, and, gte, lte, desc, inArray } = require("drizzle-orm");
-const { authMiddleware, requireSalesManagerOrAdmin } = require("../middleware/auth");
+const { authMiddleware, requireSalesManager } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -62,8 +62,9 @@ function parseDateParam(raw) {
   return d;
 }
 
-// GET /invoice?from=YYYY-MM-DD&to=YYYY-MM-DD  (sales manager OR admin)
-router.get("/", authMiddleware, requireSalesManagerOrAdmin, async (req, res) => {
+// GET /invoice?from=YYYY-MM-DD&to=YYYY-MM-DD
+// ✅ sales_manager ONLY
+router.get("/", authMiddleware, requireSalesManager, async (req, res) => {
   try {
     const from = parseDateParam(req.query.from);
     const to = parseDateParam(req.query.to);
@@ -114,7 +115,7 @@ router.get("/", authMiddleware, requireSalesManagerOrAdmin, async (req, res) => 
 });
 
 // GET /invoice/:orderId
-// - sales_manager/admin can view any
+// - sales_manager can view any
 // - normal user can view own only
 router.get("/:orderId", authMiddleware, async (req, res) => {
   try {
@@ -131,7 +132,7 @@ router.get("/:orderId", authMiddleware, async (req, res) => {
     const order = foundOrders[0];
 
     const roleName = req.user.roleName || null;
-    const privileged = roleName === "admin" || roleName === "sales_manager";
+    const privileged = roleName === "sales_manager"; // ✅ STRICT
 
     if (!privileged && order.userId !== userId) {
       return res.status(403).json({ message: "Not allowed" });

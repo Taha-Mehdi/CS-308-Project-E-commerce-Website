@@ -5,6 +5,14 @@ import { clearStoredTokens, addToCartApi } from "../lib/api";
 
 const AuthContext = createContext(null);
 
+function getRoleName(u) {
+  return u?.roleName || u?.role || u?.role_name || null;
+}
+
+function isCustomerRole(u) {
+  return getRoleName(u) === "customer";
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
@@ -25,7 +33,6 @@ export function AuthProvider({ children }) {
         try {
           const parsedUser = JSON.parse(storedUser);
 
-          // ✅ Ensure shape is object; roleName may be missing from old sessions (ok)
           if (parsedUser && typeof parsedUser === "object") {
             setToken(storedToken);
             setUser(parsedUser);
@@ -42,8 +49,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Helper: merge guest cart into server cart after login
-  async function mergeGuestCartIntoServer() {
+  async function mergeGuestCartIntoServer(currentUser) {
     if (typeof window === "undefined") return;
+
+    // ✅ Only customers should have carts / orders
+    if (!isCustomerRole(currentUser)) {
+      // Keep guest cart for later in case they log in as customer later
+      return;
+    }
 
     try {
       const raw = localStorage.getItem("guestCart");
@@ -56,11 +69,9 @@ export function AuthProvider({ children }) {
         guestCart = null;
       }
 
-      if (!Array.isArray(guestCart) || guestCart.length === 0) {
-        return;
-      }
+      if (!Array.isArray(guestCart) || guestCart.length === 0) return;
 
-      // For each guest cart item, call backend /cart/add
+      // Add each item to backend cart
       for (const item of guestCart) {
         if (!item || typeof item.productId !== "number") continue;
         const qty = Number(item.quantity) || 1;
@@ -71,6 +82,10 @@ export function AuthProvider({ children }) {
             quantity: qty,
           });
         } catch (err) {
+          // ✅ If role/cart forbidden, stop spamming console and stop merging
+          if (err?.status === 403) return;
+          if (err?.status === 401) return;
+          // For other issues, keep it quiet (optional: console.warn)
           console.warn("Failed to sync guest cart item", item, err);
         }
       }
@@ -93,15 +108,15 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      // ✅ Expect backend to provide roleName now
-      // But if someone logs in before migration, still allow.
       setToken(newToken);
       setUser(newUser);
 
       if (typeof window !== "undefined") {
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
-        mergeGuestCartIntoServer();
+
+        // ✅ merge only if customer
+        mergeGuestCartIntoServer(newUser);
       }
     } catch (err) {
       console.error("AuthContext.login storage error:", err);

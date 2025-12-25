@@ -79,7 +79,18 @@ export default function SiteLayout({ children }) {
       { href: "/products", label: "Drops" },
       { href: "/cart", label: "Bag" },
       { href: "/orders", label: "Orders", requiresAuth: true },
-      { href: "/admin", label: "Admin", requiresAdmin: true },
+
+      // One "Admin" entry for both roles, but different destinations.
+      {
+        label: "Admin",
+        requiresAdmin: true,
+        getHref: (u) =>
+          u?.roleName === "admin"
+            ? "/admin"
+            : u?.roleName === "sales_manager"
+            ? "/sales-admin"
+            : null,
+      },
     ],
     []
   );
@@ -118,7 +129,7 @@ export default function SiteLayout({ children }) {
 
         <span className="relative z-10">{label}</span>
 
-        {/* NEW: Minimal glass bag badge */}
+        {/* Minimal glass bag badge */}
         {href === "/cart" && cartCount > 0 && (
           <span
             className="
@@ -178,7 +189,25 @@ export default function SiteLayout({ children }) {
   function renderDockLinks(onClick) {
     return navLinks.map((link) => {
       if (link.requiresAuth && !user) return null;
-      if (link.requiresAdmin && (!user || user.roleId !== 1)) return null;
+
+      if (link.requiresAdmin) {
+        if (!user) return null;
+
+        const allowed = ["admin", "sales_manager"].includes(user.roleName);
+        if (!allowed) return null;
+
+        const href = link.getHref(user);
+        if (!href) return null;
+
+        return (
+          <DockLink
+            key={href}
+            href={href}
+            label={link.label}
+            onClick={onClick}
+          />
+        );
+      }
 
       return (
         <DockLink
@@ -270,7 +299,11 @@ export default function SiteLayout({ children }) {
                       href="/account"
                       label={user.fullName || "Account"}
                     />
-                    <ActionPill label="Logout" variant="primary" onClick={logout} />
+                    <ActionPill
+                      label="Logout"
+                      variant="primary"
+                      onClick={logout}
+                    />
                   </>
                 )}
               </div>

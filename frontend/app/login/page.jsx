@@ -81,21 +81,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Role-based redirect (single source of truth)
-      const role =
-        data?.user?.roleName || data?.user?.role || data?.user?.role_name || "";
-
-      if (role === "admin") {
-        router.replace("/admin");
-      } else if (
-        role === "sales_manager" ||
-        role === "sales" ||
-        role === "salesManager"
-      ) {
-        router.replace("/sales-admin");
-      } else {
-        router.replace(nextPath);
-      }
+      // ✅ Always land on homepage (or explicit next=)
+      router.replace(nextPath || "/");
     } catch (err) {
       console.error("Login error:", err);
       setMessage("An unexpected error occurred. Please try again.");

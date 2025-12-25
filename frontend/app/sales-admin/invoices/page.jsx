@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 import DripLink from "../../../components/DripLink";
-import { downloadInvoicePdfBlob, getInvoicesRangeApi } from "../../../lib/api";
+import {
+  clearStoredTokens,
+  downloadInvoicePdfBlob,
+  getInvoicesRangeApi,
+} from "../../../lib/api";
 
 function panelClass() {
   return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
@@ -30,6 +34,20 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+function handleAuthRedirect(err, nextPath) {
+  const status = err?.status;
+  if (status === 401) {
+    clearStoredTokens();
+    window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+    return true;
+  }
+  if (status === 403) {
+    window.location.href = "/";
+    return true;
+  }
+  return false;
+}
+
 export default function SalesInvoicesPage() {
   const [from, setFrom] = useState(""); // yyyy-mm-dd
   const [to, setTo] = useState(""); // yyyy-mm-dd
@@ -38,9 +56,7 @@ export default function SalesInvoicesPage() {
   const [message, setMessage] = useState("");
   const [invoices, setInvoices] = useState([]);
 
-  const canSearch = useMemo(() => {
-    return Boolean(from && to);
-  }, [from, to]);
+  const canSearch = useMemo(() => Boolean(from && to), [from, to]);
 
   async function handleSearch() {
     setMessage("");
@@ -49,8 +65,6 @@ export default function SalesInvoicesPage() {
       setMessage("Pick both From and To dates.");
       return;
     }
-
-    // simple sanity check
     if (new Date(from) > new Date(to)) {
       setMessage("From date must be before To date.");
       return;
@@ -60,7 +74,6 @@ export default function SalesInvoicesPage() {
     try {
       const data = await getInvoicesRangeApi(from, to);
 
-      // Accept array OR { invoices: [...] } OR { orders: [...] }
       const list =
         (Array.isArray(data) && data) ||
         (Array.isArray(data?.invoices) && data.invoices) ||
@@ -71,6 +84,7 @@ export default function SalesInvoicesPage() {
       if (list.length === 0) setMessage("No invoices found for this range.");
     } catch (err) {
       console.error("Invoices fetch error:", err);
+      if (handleAuthRedirect(err, "/sales-admin/invoices")) return;
       setInvoices([]);
       setMessage(err?.message || "Failed to load invoices.");
     } finally {
@@ -88,6 +102,7 @@ export default function SalesInvoicesPage() {
       setMessage(`Saved invoice-${orderId}.pdf`);
     } catch (err) {
       console.error("Invoice download error:", err);
+      if (handleAuthRedirect(err, "/sales-admin/invoices")) return;
       setMessage(err?.message || "Failed to download invoice PDF.");
     } finally {
       setDownloadingId(null);
@@ -102,7 +117,6 @@ export default function SalesInvoicesPage() {
       const blob = await downloadInvoicePdfBlob(orderId);
       const url = URL.createObjectURL(blob);
 
-      // open in new tab and print
       const w = window.open(url, "_blank", "noopener,noreferrer");
       if (!w) {
         setMessage("Popup blocked. Allow popups to print.");
@@ -110,7 +124,6 @@ export default function SalesInvoicesPage() {
         return;
       }
 
-      // wait a bit then print
       w.addEventListener("load", () => {
         try {
           w.focus();
@@ -118,10 +131,10 @@ export default function SalesInvoicesPage() {
         } catch {}
       });
 
-      // best-effort cleanup later
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       console.error("Invoice print error:", err);
+      if (handleAuthRedirect(err, "/sales-admin/invoices")) return;
       setMessage(err?.message || "Failed to open invoice for printing.");
     } finally {
       setDownloadingId(null);
@@ -257,15 +270,15 @@ export default function SalesInvoicesPage() {
             </div>
           );
         })}
-      </div>
 
-      {!loading && invoices.length === 0 && (
-        <div className={panelClass()}>
-          <p className="text-sm text-gray-300/70">
-            Pick a date range and search to see invoices.
-          </p>
-        </div>
-      )}
+        {!loading && invoices.length === 0 && (
+          <div className={panelClass()}>
+            <p className="text-sm text-gray-300/70">
+              Pick a date range and click Search.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

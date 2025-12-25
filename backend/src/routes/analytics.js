@@ -2,7 +2,7 @@ const express = require("express");
 const { db } = require("../db");
 const { orders, orderItems, products } = require("../db/schema");
 const { and, gte, lte, inArray, sql } = require("drizzle-orm");
-const { authMiddleware, requireSalesManagerOrAdmin } = require("../middleware/auth");
+const { authMiddleware, requireSalesManager } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -14,7 +14,8 @@ function parseDateParam(raw) {
 }
 
 // GET /analytics/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get("/summary", authMiddleware, requireSalesManagerOrAdmin, async (req, res) => {
+// ✅ sales_manager ONLY
+router.get("/summary", authMiddleware, requireSalesManager, async (req, res) => {
   try {
     const from = parseDateParam(req.query.from);
     const to = parseDateParam(req.query.to);

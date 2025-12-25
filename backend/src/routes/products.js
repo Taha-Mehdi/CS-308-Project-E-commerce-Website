@@ -6,7 +6,7 @@ const { eq, or, ilike, asc, desc, inArray } = require("drizzle-orm");
 const {
   authMiddleware,
   requireAdmin,
-  requireSalesManagerOrAdmin,
+  requireSalesManager,
   requireProductManagerOrAdmin,
 } = require("../middleware/auth");
 const multer = require("multer");
@@ -299,7 +299,7 @@ async function handleDiscount(req, res) {
           const [upd] = await tx
             .update(products)
             .set({
-              originalPrice: p.originalPrice ?? baseOriginal, // store numeric, not string
+              originalPrice: p.originalPrice ?? baseOriginal,
               discountRate: rate2,
               price: newPrice,
             })
@@ -362,10 +362,10 @@ async function handleDiscount(req, res) {
   }
 }
 
-// ✅ Correct endpoint expected by frontend
-router.post("/discounts", authMiddleware, requireSalesManagerOrAdmin, handleDiscount);
-// ✅ Keep old endpoint as alias (doesn’t hurt)
-router.post("/discount", authMiddleware, requireSalesManagerOrAdmin, handleDiscount);
+// ✅ sales_manager ONLY (strict)
+router.post("/discounts", authMiddleware, requireSalesManager, handleDiscount);
+// ✅ Keep old endpoint as alias
+router.post("/discount", authMiddleware, requireSalesManager, handleDiscount);
 
 // DELETE /products/:id (admin)
 router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {

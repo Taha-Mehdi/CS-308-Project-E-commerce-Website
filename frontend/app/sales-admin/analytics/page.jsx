@@ -1,120 +1,39 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import DripLink from "../../../components/DripLink";
-import { getAnalyticsSummaryApi } from "../../../lib/api";
+import { clearStoredTokens, getAnalyticsSummaryApi } from "../../../lib/api";
 
 function panelClass() {
   return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
 }
 
 function money(n) {
-  const x = Number(n || 0);
-  if (Number.isNaN(x)) return "$0.00";
-  return `$${x.toFixed(2)}`;
+  const v = Number(n || 0);
+  return `$${v.toFixed(2)}`;
 }
 
-function clamp(n, a, b) {
-  return Math.max(a, Math.min(b, n));
-}
-
-// Try to normalize various backend shapes into { totals, series[] }
 function normalizeAnalytics(data) {
-  // Common shapes we might see:
-  // A) { revenue, cost, profit, series: [{date, revenue, cost, profit}] }
-  // B) { summary: {...}, points: [...] }
-  // C) { orders: [...] } where each order has total and createdAt
-  // D) { daily: [...] } etc.
+  // Accept many backend shapes safely
+  const totals = {
+    revenue: Number(data?.revenue ?? data?.totalRevenue ?? data?.totals?.revenue ?? 0) || 0,
+    cost: Number(data?.cost ?? data?.totalCost ?? data?.totals?.cost ?? 0) || 0,
+    profit: Number(data?.profit ?? data?.lossProfit ?? data?.totals?.profit ?? 0) || 0,
+  };
 
-  const seriesRaw =
+  // series formats supported:
+  // 1) data.series = [{date, revenue, cost, profit}, ...]
+  // 2) data.points = [...]
+  // 3) no series
+  const series =
     (Array.isArray(data?.series) && data.series) ||
     (Array.isArray(data?.points) && data.points) ||
-    (Array.isArray(data?.daily) && data.daily) ||
-    null;
-
-  // If backend already provides a series, map it
-  if (seriesRaw) {
-    const series = seriesRaw
-      .map((p) => {
-        const date = p.date || p.day || p.createdAt || p.created_at;
-        const revenue = Number(p.revenue ?? p.totalRevenue ?? p.sales ?? p.total ?? 0) || 0;
-        const cost = Number(p.cost ?? p.totalCost ?? 0);
-        const profit = Number(p.profit ?? p.lossProfit ?? p.net ?? (Number.isNaN(cost) ? 0 : revenue - cost));
-        return {
-          date: date ? String(date) : "",
-          revenue,
-          cost: Number.isNaN(cost) ? null : cost,
-          profit: Number.isNaN(profit) ? 0 : profit,
-        };
-      })
-      .filter((p) => p.date);
-
-    const totals = {
-      revenue:
-        Number(data?.revenue ?? data?.totalRevenue ?? data?.summary?.revenue ?? data?.summary?.totalRevenue ?? 0) ||
-        series.reduce((s, p) => s + (p.revenue || 0), 0),
-      cost:
-        Number(data?.cost ?? data?.totalCost ?? data?.summary?.cost ?? data?.summary?.totalCost ?? 0) ||
-        series.reduce((s, p) => s + (p.cost || 0), 0),
-      profit:
-        Number(data?.profit ?? data?.lossProfit ?? data?.summary?.profit ?? data?.summary?.lossProfit ?? 0) ||
-        series.reduce((s, p) => s + (p.profit || 0), 0),
-    };
-
-    return { totals, series };
-  }
-
-  // If backend returns orders list (common)
-  const orders =
-    (Array.isArray(data) && data) ||
-    (Array.isArray(data?.orders) && data.orders) ||
-    (Array.isArray(data?.items) && data.items) ||
     [];
 
-  if (orders.length) {
-    // group by YYYY-MM-DD
-    const map = new Map();
-    for (const o of orders) {
-      const dt = o.createdAt || o.created_at || o.date;
-      const d = new Date(dt);
-      const key = Number.isNaN(d.getTime())
-        ? String(dt || "unknown")
-        : d.toISOString().slice(0, 10);
-
-      const revenue = Number(o.total ?? o.amount ?? 0) || 0;
-
-      // cost may exist per order; if not, default to 50% of sale price (requirement)
-      const costVal = Number(o.cost ?? o.totalCost ?? NaN);
-      const cost = Number.isNaN(costVal) ? revenue * 0.5 : costVal;
-      const profit = revenue - cost;
-
-      const prev = map.get(key) || { date: key, revenue: 0, cost: 0, profit: 0 };
-      prev.revenue += revenue;
-      prev.cost += cost;
-      prev.profit += profit;
-      map.set(key, prev);
-    }
-
-    const series = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-    const totals = {
-      revenue: series.reduce((s, p) => s + p.revenue, 0),
-      cost: series.reduce((s, p) => s + p.cost, 0),
-      profit: series.reduce((s, p) => s + p.profit, 0),
-    };
-    return { totals, series };
-  }
-
-  // Fallback totals-only
-  const totals = {
-    revenue: Number(data?.revenue ?? data?.totalRevenue ?? 0) || 0,
-    cost: Number(data?.cost ?? data?.totalCost ?? 0) || 0,
-    profit: Number(data?.profit ?? data?.lossProfit ?? 0) || 0,
-  };
-  return { totals, series: [] };
+  return { totals, series };
 }
 
 function SimpleLineChart({ series, height = 180 }) {
-  // series: [{date, profit, revenue}]
   if (!series || series.length < 2) {
     return (
       <div className="text-sm text-gray-300/70">
@@ -128,7 +47,7 @@ function SimpleLineChart({ series, height = 180 }) {
   const max = Math.max(...profits);
 
   const pad = 16;
-  const w = 900; // viewBox width
+  const w = 900;
   const h = height;
 
   const xStep = (w - pad * 2) / (series.length - 1 || 1);
@@ -136,7 +55,7 @@ function SimpleLineChart({ series, height = 180 }) {
 
   const points = series.map((p, i) => {
     const x = pad + i * xStep;
-    const yNorm = (Number(p.profit || 0) - min) / range; // 0..1
+    const yNorm = (Number(p.profit || 0) - min) / range;
     const y = pad + (1 - yNorm) * (h - pad * 2);
     return { x, y };
   });
@@ -156,7 +75,6 @@ function SimpleLineChart({ series, height = 180 }) {
         role="img"
         aria-label="Profit over time"
       >
-        {/* zero line */}
         {zeroInside && (
           <line
             x1={pad}
@@ -169,7 +87,6 @@ function SimpleLineChart({ series, height = 180 }) {
           />
         )}
 
-        {/* path */}
         <path
           d={path}
           fill="none"
@@ -179,7 +96,6 @@ function SimpleLineChart({ series, height = 180 }) {
           strokeLinecap="round"
         />
 
-        {/* points */}
         {points.map((pt, idx) => (
           <circle
             key={idx}
@@ -200,6 +116,20 @@ function SimpleLineChart({ series, height = 180 }) {
       </div>
     </div>
   );
+}
+
+function handleAuthRedirect(err, nextPath) {
+  const status = err?.status;
+  if (status === 401) {
+    clearStoredTokens();
+    window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+    return true;
+  }
+  if (status === 403) {
+    window.location.href = "/";
+    return true;
+  }
+  return false;
 }
 
 export default function SalesAnalyticsPage() {
@@ -227,28 +157,19 @@ export default function SalesAnalyticsPage() {
       const data = await getAnalyticsSummaryApi(from, to);
       const normalized = normalizeAnalytics(data);
 
-      // If backend did not provide cost and it looks zero, keep profit from backend,
-      // but ensure we have a reasonable cost display.
       const cost = Number(normalized.totals.cost || 0);
       const revenue = Number(normalized.totals.revenue || 0);
       const profit = Number(normalized.totals.profit || 0);
 
-      // If cost not present but revenue present, default cost to 50% (requirement)
-      const costFixed =
-        cost === 0 && revenue > 0 ? revenue * 0.5 : cost;
-
+      // Default cost to 50% revenue if not provided (requirement)
+      const costFixed = cost === 0 && revenue > 0 ? revenue * 0.5 : cost;
       const profitFixed =
         normalized.totals.profit === 0 && revenue > 0 && costFixed > 0
           ? revenue - costFixed
           : profit;
 
-      normalized.totals = {
-        revenue,
-        cost: costFixed,
-        profit: profitFixed,
-      };
+      normalized.totals = { revenue, cost: costFixed, profit: profitFixed };
 
-      // If series exists but costs are missing, backfill costs at 50% revenue
       normalized.series = (normalized.series || []).map((p) => {
         const c = p.cost == null ? (p.revenue || 0) * 0.5 : p.cost;
         const pr =
@@ -264,18 +185,12 @@ export default function SalesAnalyticsPage() {
       }
     } catch (err) {
       console.error("Analytics error:", err);
+      if (handleAuthRedirect(err, "/sales-admin/analytics")) return;
       setMessage(err?.message || "Failed to load analytics.");
     } finally {
       setLoading(false);
     }
   }
-
-  const profitTone = useMemo(() => {
-    const p = Number(result?.totals?.profit || 0);
-    if (p > 0) return "text-emerald-200";
-    if (p < 0) return "text-rose-200";
-    return "text-gray-200/80";
-  }, [result]);
 
   return (
     <div className="space-y-6">
@@ -288,7 +203,7 @@ export default function SalesAnalyticsPage() {
             Analytics
           </h1>
           <p className="text-sm text-gray-300/70">
-            Revenue and profit/loss between dates (cost defaults to 50% if missing).
+            Revenue and profit between dates.
           </p>
         </div>
 
@@ -344,110 +259,48 @@ export default function SalesAnalyticsPage() {
               disabled:opacity-60 disabled:cursor-not-allowed
             "
           >
-            {loading ? "Loading…" : "Run"}
+            {loading ? "Running…" : "Run"}
           </button>
         </div>
       </div>
 
       {result && (
-        <>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className={panelClass()}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                Revenue
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {money(result.totals.revenue)}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-300/60">
-                Total sales in range
-              </p>
-            </div>
-
-            <div className={panelClass()}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                Cost
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {money(result.totals.cost)}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-300/60">
-                Defaults to 50% if missing
-              </p>
-            </div>
-
-            <div className={panelClass()}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                Profit / Loss
-              </p>
-              <p className={`mt-2 text-2xl font-semibold ${profitTone}`}>
-                {money(result.totals.profit)}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-300/60">
-                Revenue − Cost
-              </p>
+        <div className="space-y-4">
+          <div className={panelClass()}>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-gray-300/60">
+                  Revenue
+                </p>
+                <p className="text-lg font-semibold text-white">
+                  {money(result.totals.revenue)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-gray-300/60">
+                  Cost
+                </p>
+                <p className="text-lg font-semibold text-white">
+                  {money(result.totals.cost)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-gray-300/60">
+                  Profit
+                </p>
+                <p className="text-lg font-semibold text-white">
+                  {money(result.totals.profit)}
+                </p>
+              </div>
             </div>
           </div>
 
           <div className={panelClass()}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                  Profit chart
-                </p>
-                <p className="text-sm text-gray-300/70">
-                  Profit trend across the selected range
-                </p>
-              </div>
-              <span className="text-[11px] text-gray-300/60">
-                Points: {result.series.length}
-              </span>
-            </div>
-
-            <div className="mt-4">
-              <SimpleLineChart series={result.series} />
-            </div>
+            <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60 mb-3">
+              Profit chart
+            </p>
+            <SimpleLineChart series={result.series} />
           </div>
-
-          {/* Optional table */}
-          {result.series.length > 0 && (
-            <div className={panelClass()}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                Breakdown
-              </p>
-
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-left text-[12px] text-gray-200/80">
-                  <thead className="text-[11px] uppercase tracking-[0.18em] text-gray-300/60">
-                    <tr>
-                      <th className="py-2 pr-4">Date</th>
-                      <th className="py-2 pr-4">Revenue</th>
-                      <th className="py-2 pr-4">Cost</th>
-                      <th className="py-2">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.series.map((p) => (
-                      <tr key={p.date} className="border-t border-white/10">
-                        <td className="py-2 pr-4">{p.date}</td>
-                        <td className="py-2 pr-4">{money(p.revenue)}</td>
-                        <td className="py-2 pr-4">{money(p.cost)}</td>
-                        <td className="py-2">{money(p.profit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {!result && !loading && (
-        <div className={panelClass()}>
-          <p className="text-sm text-gray-300/70">
-            Pick a date range and run analytics to see revenue and profit/loss.
-          </p>
         </div>
       )}
     </div>
