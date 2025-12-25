@@ -26,6 +26,13 @@ function NavItem({ href, label }) {
 export default function AdminShell({ title = "Admin Panel", children }) {
   const { user, logout } = useAuth();
 
+  // Role gating: show Analytics + Sales tools ONLY for sales manager.
+  const role =
+    (user?.roleName || user?.role || user?.role_name || "").toString().toLowerCase();
+
+  const isSalesManager =
+    role === "sales_manager" || role === "sales manager" || role === "salesmanager";
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-6xl px-4 py-6">
@@ -54,16 +61,18 @@ export default function AdminShell({ title = "Admin Panel", children }) {
               <NavItem href="/admin/products" label="Products" />
               <NavItem href="/admin/orders" label="Orders" />
               <NavItem href="/admin/invoices" label="Invoices" />
-              <NavItem href="/admin/analytics" label="Analytics" />
+              {isSalesManager && <NavItem href="/admin/analytics" label="Analytics" />}
             </div>
 
             <div className="mt-4 border-t border-white/10 pt-4 space-y-1">
-              <Link
-                href="/sales-admin"
-                className="block rounded-xl px-3 py-2 text-sm text-gray-300/80 hover:bg-white/5 hover:text-white transition"
-              >
-                ↗ Sales tools
-              </Link>
+              {isSalesManager && (
+                <Link
+                  href="/sales-admin"
+                  className="block rounded-xl px-3 py-2 text-sm text-gray-300/80 hover:bg-white/5 hover:text-white transition"
+                >
+                  ↗ Sales tools
+                </Link>
+              )}
 
               <Link
                 href="/"

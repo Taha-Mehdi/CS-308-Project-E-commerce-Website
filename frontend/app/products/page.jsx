@@ -34,7 +34,7 @@ function getCategoryLabel(categoryId) {
  * Premium custom dropdown:
  * - No hydration mismatch (single-line classNames)
  * - High z-index
- * - Not clipped (we remove overflow-hidden in header section)
+ * - Not clipped (header background is clipped via a separate layer, not the section)
  */
 function GlassSelect({ value, onChange, options, widthClass = "w-[185px]" }) {
   const [open, setOpen] = useState(false);
@@ -301,81 +301,100 @@ export default function ProductsPage() {
   const pillButton =
     "h-10 px-4 rounded-full text-[11px] font-semibold uppercase tracking-[0.18em] transition active:scale-[0.98]";
 
+  const numberFieldNoSpinner =
+    "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
   return (
     <SiteLayout>
       <div className="space-y-6">
-        {/* HEADER (IMPORTANT: removed overflow-hidden so dropdowns are not clipped) */}
-        <section className="relative rounded-[34px] border border-border bg-surface p-5 sm:p-6">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_circle_at_12%_20%,rgba(168,85,247,0.18),transparent_58%),radial-gradient(900px_circle_at_85%_50%,rgba(251,113,133,0.12),transparent_64%)]" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/14 via-transparent to-black/18" />
+        {/* HEADER (background clipped without clipping dropdown menus) */}
+        <section className="relative">
+          {/* CLIPPED BACKGROUND LAYER (fixes purple hue overflow) */}
+          <div className="pointer-events-none absolute inset-0 rounded-[34px] overflow-hidden border border-border bg-surface">
+            <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_12%_20%,rgba(168,85,247,0.18),transparent_58%),radial-gradient(900px_circle_at_85%_50%,rgba(251,113,133,0.12),transparent_64%)]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/14 via-transparent to-black/18" />
+          </div>
 
-          <div className="relative space-y-5">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/70">
-                  Drops
-                </p>
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
-                  Curated sneaker releases
-                </h1>
-                <p className="text-[12px] sm:text-sm text-gray-300/70 max-w-xl">
-                  Search, filter, and lock your picks — clean UI, fast actions.
-                </p>
+          {/* CONTENT LAYER (NOT clipped, so dropdowns can overflow) */}
+          <div className="relative rounded-[34px] p-5 sm:p-6">
+            <div className="relative space-y-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/70">
+                    Drops
+                  </p>
+                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+                    Curated sneaker releases
+                  </h1>
+                  <p className="text-[12px] sm:text-sm text-gray-300/70 max-w-xl">
+                    Search, filter, and lock your picks — clean UI, fast actions.
+                  </p>
+                </div>
+
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 backdrop-blur">
+                  <span className="text-[10px] uppercase tracking-[0.24em] text-gray-300/70">
+                    {filteredAndSorted.length} results
+                  </span>
+                </div>
               </div>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 backdrop-blur">
-                <span className="text-[10px] uppercase tracking-[0.24em] text-gray-300/70">
-                  {filteredAndSorted.length} results
-                </span>
+              {/* FILTER BAR */}
+              <div className="relative z-20 rounded-[24px] border border-white/10 bg-white/[0.04] backdrop-blur p-3 sm:p-4 shadow-[0_16px_60px_rgba(0,0,0,0.32)]">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search drops"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className={`${fieldBase} min-w-[200px] flex-1`}
+                  />
+
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Min"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                    className={`${fieldBase} ${numberFieldNoSpinner} w-[92px]`}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Max"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    className={`${fieldBase} ${numberFieldNoSpinner} w-[92px]`}
+                  />
+
+                  <GlassSelect
+                    value={categoryFilter}
+                    onChange={setCategoryFilter}
+                    options={CATEGORY_OPTIONS}
+                    widthClass="w-[180px]"
+                  />
+                  <GlassSelect
+                    value={sortBy}
+                    onChange={setSortBy}
+                    options={SORT_OPTIONS}
+                    widthClass="w-[200px]"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className={`${pillButton} border border-white/10 bg-white/5 text-white/85 hover:bg-white/10`}
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
+
+              {message && (
+                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[12px] text-gray-200/80">
+                  {message}
+                </div>
+              )}
             </div>
-
-            {/* FILTER BAR (z-20 so dropdown stays above everything) */}
-            <div className="relative z-20 rounded-[24px] border border-white/10 bg-white/[0.04] backdrop-blur p-3 sm:p-4 shadow-[0_16px_60px_rgba(0,0,0,0.32)]">
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <input
-                  type="text"
-                  placeholder="Search drops"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className={`${fieldBase} min-w-[200px] flex-1`}
-                />
-
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Min"
-                  value={minPrice}
-                  onChange={(e) => setMinPrice(e.target.value)}
-                  className={`${fieldBase} w-[92px]`}
-                />
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Max"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(e.target.value)}
-                  className={`${fieldBase} w-[92px]`}
-                />
-
-                <GlassSelect value={categoryFilter} onChange={setCategoryFilter} options={CATEGORY_OPTIONS} widthClass="w-[180px]" />
-                <GlassSelect value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} widthClass="w-[200px]" />
-
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className={`${pillButton} border border-white/10 bg-white/5 text-white/85 hover:bg-white/10`}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
-            {message && (
-              <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[12px] text-gray-200/80">
-                {message}
-              </div>
-            )}
           </div>
         </section>
 
@@ -383,7 +402,10 @@ export default function ProductsPage() {
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="rounded-[30px] border border-white/10 bg-white/[0.03] backdrop-blur p-4 shadow-[0_18px_70px_rgba(0,0,0,0.35)]">
+              <div
+                key={i}
+                className="rounded-[30px] border border-white/10 bg-white/[0.03] backdrop-blur p-4 shadow-[0_18px_70px_rgba(0,0,0,0.35)]"
+              >
                 <div className="w-full aspect-square rounded-[22px] bg-white/10 animate-pulse mb-4" />
                 <div className="h-4 w-2/3 rounded bg-white/10 animate-pulse mb-2" />
                 <div className="h-4 w-1/3 rounded bg-white/10 animate-pulse mb-4" />
@@ -430,11 +452,12 @@ export default function ProductsPage() {
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                         />
                       ) : (
-                        <span className="text-[10px] uppercase tracking-[0.22em] text-gray-300/60">SNEAKS-UP</span>
+                        <span className="text-[10px] uppercase tracking-[0.22em] text-gray-300/60">
+                          SNEAKS-UP
+                        </span>
                       )}
                     </div>
 
-                    {/* Stock + Price (black ink) */}
                     <div className="absolute left-3 top-3">
                       <StockBadge stock={product?.stock} ink="dark" />
                     </div>
@@ -450,7 +473,9 @@ export default function ProductsPage() {
 
                   <div className="relative pt-4 space-y-2">
                     <div className="min-w-0">
-                      <h2 className="text-sm font-semibold text-foreground line-clamp-1">{product?.name}</h2>
+                      <h2 className="text-sm font-semibold text-foreground line-clamp-1">
+                        {product?.name}
+                      </h2>
                       {product?.description && (
                         <p className="mt-1 text-[12px] text-gray-300/70 line-clamp-2 leading-snug">
                           {product.description}
@@ -462,7 +487,10 @@ export default function ProductsPage() {
                       <span className="text-[10px] text-gray-300/60 uppercase tracking-[0.18em]">
                         {getCategoryLabel(product?.categoryId)}
                       </span>
-                      <DripLink href={`/products/${product.id}`} className="text-[10px] uppercase tracking-[0.22em] text-gray-200/70 hover:text-white transition">
+                      <DripLink
+                        href={`/products/${product.id}`}
+                        className="text-[10px] uppercase tracking-[0.22em] text-gray-200/70 hover:text-white transition"
+                      >
                         View →
                       </DripLink>
                     </div>

@@ -148,9 +148,7 @@ export default function SalesDiscountsPage() {
       setMessage(
         rate <= 0
           ? "Discount cleared and original prices restored."
-          : `Discount applied (${rate.toFixed(
-              2
-            )}%) — wishlist users notified.`
+          : `Discount applied (${rate.toFixed(2)}%) — wishlist users notified.`
       );
     } catch (err) {
       console.error("Apply discount error:", err);
@@ -197,8 +195,7 @@ export default function SalesDiscountsPage() {
               Discounts
             </p>
             <p className="text-sm text-gray-200/80">
-              Selected:{" "}
-              <span className="text-gray-100">{selectedIds.size}</span>
+              Selected: <span className="text-gray-100">{selectedIds.size}</span>
             </p>
           </div>
 
@@ -297,23 +294,48 @@ export default function SalesDiscountsPage() {
                   <div className="flex flex-col lg:flex-row gap-5">
                     <div className="flex flex-col items-start gap-2 w-full lg:w-[220px]">
                       <div className="w-full flex items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-gray-200/80">
+                        {/* ✅ Improved checkbox UI */}
+                        <label
+                          className={[
+                            "group inline-flex cursor-pointer select-none items-center gap-2 rounded-full",
+                            "border px-3 py-2 transition active:scale-[0.99]",
+                            isSelected
+                              ? "border-white/20 bg-white/10 text-white"
+                              : "border-white/10 bg-white/5 text-gray-200/80 hover:bg-white/10",
+                            "focus-within:ring-2 focus-within:ring-white/15",
+                          ].join(" ")}
+                        >
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleSelected(p.id)}
-                            className="h-4 w-4 rounded border border-white/20 bg-white/5"
+                            className="sr-only"
                           />
-                          Select
+
+                          {/* custom indicator */}
+                          <span
+                            className={[
+                              "relative grid h-5 w-5 place-items-center rounded-full border transition",
+                              isSelected
+                                ? "border-white/30 bg-white/15"
+                                : "border-white/15 bg-white/5",
+                            ].join(" ")}
+                            aria-hidden="true"
+                          >
+                            <span
+                              className={[
+                                "h-2.5 w-2.5 rounded-full transition",
+                                isSelected ? "bg-white" : "bg-transparent",
+                              ].join(" ")}
+                            />
+                          </span>
+
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                            {isSelected ? "Selected" : "Select"}
+                          </span>
                         </label>
 
-                        {p.discountRate ? (
-                          <span className={chip("warn")}>
-                            {Number(p.discountRate).toFixed(2)}% off
-                          </span>
-                        ) : (
-                          <span className={chip("muted")}>No discount</span>
-                        )}
+                        {/* (discount chip moved below under price/stock as requested) */}
                       </div>
 
                       <div className="w-full aspect-square rounded-[24px] overflow-hidden border border-white/10 bg-white/5">
@@ -332,21 +354,18 @@ export default function SalesDiscountsPage() {
                     </div>
 
                     <div className="flex-1 space-y-2">
-                      <h2 className="text-lg font-semibold text-white">
-                        {p.name}
-                      </h2>
+                      <h2 className="text-lg font-semibold text-white">{p.name}</h2>
                       <p className="text-[11px] text-gray-300/60">
                         ID: {p.id} · Model: {p.model || "—"} · Serial:{" "}
                         {p.serialNumber || "—"}
                       </p>
                       <p className="text-sm text-gray-200/80 leading-relaxed">
                         {p.description || (
-                          <span className="text-gray-300/50 italic">
-                            No description.
-                          </span>
+                          <span className="text-gray-300/50 italic">No description.</span>
                         )}
                       </p>
 
+                      {/* ✅ chips section: price, stock, then discount chip */}
                       <div className="pt-2 flex flex-wrap gap-2">
                         <span className={chip("ok")}>
                           ${Number(p.price || 0).toFixed(2)}
@@ -354,6 +373,14 @@ export default function SalesDiscountsPage() {
                         <span className={chip("muted")}>
                           Stock: {Number(p.stock ?? 0)}
                         </span>
+
+                        {p.discountRate ? (
+                          <span className={chip("warn")}>
+                            {Number(p.discountRate).toFixed(2)}% off
+                          </span>
+                        ) : (
+                          <span className={chip("muted")}>No discount</span>
+                        )}
                       </div>
                     </div>
                   </div>

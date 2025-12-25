@@ -3,11 +3,34 @@
 import Link from "next/link";
 import StockBadge from "./StockBadge";
 
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 export default function ProductCard({ product }) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
 
-  const price = Number(product?.price || 0).toFixed(2);
+  const priceNum = Number(product?.price || 0);
+  const originalNum =
+    product?.originalPrice !== null && product?.originalPrice !== undefined
+      ? Number(product.originalPrice)
+      : null;
+
+  const rateNum =
+    product?.discountRate !== null && product?.discountRate !== undefined
+      ? Number(product.discountRate)
+      : null;
+
+  const hasDiscount =
+    Number.isFinite(rateNum) &&
+    rateNum > 0 &&
+    Number.isFinite(originalNum) &&
+    originalNum > priceNum;
+
+  const price = round2(priceNum).toFixed(2);
+  const original = hasDiscount ? round2(originalNum).toFixed(2) : null;
+  const badgeRate = hasDiscount ? round2(rateNum).toFixed(0) : null;
 
   return (
     <Link
@@ -55,7 +78,7 @@ export default function ProductCard({ product }) {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
         {/* Price chip */}
-        <div className="absolute left-4 top-4">
+        <div className="absolute left-4 top-4 space-y-2">
           <div
             className="
               inline-flex items-center gap-2 rounded-full px-3 py-1.5
@@ -65,10 +88,30 @@ export default function ProductCard({ product }) {
             "
           >
             <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent-2)]" />
-            <span className="text-[12px] font-semibold text-white">
-              ${price}
-            </span>
+
+            <span className="text-[12px] font-semibold text-white">${price}</span>
+
+            {hasDiscount && (
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-200/85">
+                <span className="mx-1 opacity-50">·</span>
+                <span className="line-through opacity-70">${original}</span>
+              </span>
+            )}
           </div>
+
+          {/* Discount badge */}
+          {hasDiscount && (
+            <div
+              className="
+                inline-flex items-center gap-2 rounded-full px-3 py-1
+                border border-rose-500/30 bg-rose-500/10 backdrop-blur
+                text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-200
+              "
+            >
+              <span className="inline-block size-1.5 rounded-full bg-rose-300" />
+              {badgeRate}% OFF
+            </div>
+          )}
         </div>
 
         {/* Stock */}

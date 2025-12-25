@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import SiteLayout from "../../../components/SiteLayout";
 import DripLink from "../../../components/DripLink";
 import StockBadge from "../../../components/StockBadge";
 import { useAuth } from "../../../context/AuthContext";
@@ -9,21 +8,44 @@ import { clearStoredTokens } from "../../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+/* ---- Lighter panels + NO black block behind catalog cards ---- */
 function panelClass() {
-  return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
+  return [
+    "rounded-[34px]",
+    "border border-white/10",
+    "bg-white/[0.04]",
+    "backdrop-blur-xl",
+    "p-5 sm:p-6",
+    "shadow-[0_18px_70px_rgba(0,0,0,0.45)]",
+  ].join(" ");
 }
 
 function chipBase() {
-  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border whitespace-nowrap";
 }
 function chip(tone = "muted") {
   const base = chipBase();
-  if (tone === "warn")
-    return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
-  if (tone === "ok")
-    return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+  if (tone === "warn") return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
+  if (tone === "ok") return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
   return `${base} border-white/10 bg-white/5 text-gray-200/80`;
 }
+
+const fieldBase =
+  "h-11 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white placeholder:text-gray-400/60 focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)]";
+
+const textAreaBase =
+  "rounded-[26px] border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-white placeholder:text-gray-400/60 resize-none focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)]";
+
+const btnBase =
+  "h-11 inline-flex items-center justify-center rounded-full px-6 text-[11px] font-semibold uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed";
+
+const btnPrimary =
+  "bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] text-black hover:opacity-95";
+
+const btnGhost = "border border-white/10 bg-white/5 text-white/90 hover:bg-white/10";
+
+const btnDanger =
+  "border border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15";
 
 function canCatalogRole(user) {
   const rn = user?.roleName || user?.role || user?.role_name || "";
@@ -130,9 +152,7 @@ export default function AdminProductsPage() {
       }
 
       const token =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("token")
-          : null;
+        typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
       try {
         const prodRes = await fetch(`${apiBase}/products`);
@@ -200,9 +220,7 @@ export default function AdminProductsPage() {
 
   async function uploadProductImage(productId, file) {
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
     if (!token) {
       setMessage("Please login.");
@@ -231,9 +249,7 @@ export default function AdminProductsPage() {
       }
 
       const updated = await res.json();
-      setProducts((prev) =>
-        prev.map((p) => (p.id === productId ? updated : p))
-      );
+      setProducts((prev) => prev.map((p) => (p.id === productId ? updated : p)));
       setMessage("Image updated.");
     } catch (err) {
       console.error("Upload image error:", err);
@@ -251,9 +267,7 @@ export default function AdminProductsPage() {
     }
 
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
       setMessage("Please login.");
       return;
@@ -262,22 +276,12 @@ export default function AdminProductsPage() {
     const priceNumber = Number(newPrice);
     const stockNumber = Number(newStock);
 
-    if (!newName.trim()) {
-      setMessage("Name is required.");
-      return;
-    }
-    if (Number.isNaN(priceNumber) || priceNumber < 0) {
-      setMessage("Price must be a valid number.");
-      return;
-    }
-    if (!Number.isInteger(stockNumber) || stockNumber < 0) {
-      setMessage("Stock must be a non-negative integer.");
-      return;
-    }
-    if (!newDescription.trim()) {
-      setMessage("Description is required.");
-      return;
-    }
+    if (!newName.trim()) return setMessage("Name is required.");
+    if (Number.isNaN(priceNumber) || priceNumber < 0)
+      return setMessage("Price must be a valid number.");
+    if (!Number.isInteger(stockNumber) || stockNumber < 0)
+      return setMessage("Stock must be a non-negative integer.");
+    if (!newDescription.trim()) return setMessage("Description is required.");
 
     setCreating(true);
     setMessage("");
@@ -285,7 +289,6 @@ export default function AdminProductsPage() {
     try {
       const categoryId = newCategory ? Number(newCategory) : null;
 
-      // Create product first
       const res = await fetch(`${apiBase}/products`, {
         method: "POST",
         headers: {
@@ -317,7 +320,6 @@ export default function AdminProductsPage() {
       const created = await res.json();
       setProducts((prev) => [created, ...prev]);
 
-      // Upload image if provided
       if (newImageFile) {
         await uploadProductImage(created.id, newImageFile);
       }
@@ -344,31 +346,20 @@ export default function AdminProductsPage() {
   }
 
   async function handleSaveEdit(productId) {
-    if (!canEditCatalog) {
-      setMessage("You do not have permissions to update products.");
-      return;
-    }
+    if (!canEditCatalog)
+      return setMessage("You do not have permissions to update products.");
 
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
-    if (!token) {
-      setMessage("Please login.");
-      return;
-    }
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) return setMessage("Please login.");
 
     const stockNumber = Number(editStock);
-    if (!Number.isInteger(stockNumber) || stockNumber < 0) {
-      setMessage("Stock must be a non-negative integer.");
-      return;
-    }
+    if (!Number.isInteger(stockNumber) || stockNumber < 0)
+      return setMessage("Stock must be a non-negative integer.");
 
     const priceNumber = Number(editPrice);
-    if (Number.isNaN(priceNumber) || priceNumber < 0) {
-      setMessage("Price must be a valid number.");
-      return;
-    }
+    if (Number.isNaN(priceNumber) || priceNumber < 0)
+      return setMessage("Price must be a valid number.");
 
     setSavingEdit(true);
     const categoryId = editCategory ? Number(editCategory) : null;
@@ -398,9 +389,7 @@ export default function AdminProductsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setProducts((prev) =>
-          prev.map((p) => (p.id === productId ? data : p))
-        );
+        setProducts((prev) => prev.map((p) => (p.id === productId ? data : p)));
         cancelEdit();
         setMessage("Product updated.");
       } else {
@@ -417,20 +406,13 @@ export default function AdminProductsPage() {
   }
 
   async function handleDelete(productId) {
-    if (!canEditCatalog) {
-      setMessage("You do not have permissions to delete products.");
-      return;
-    }
+    if (!canEditCatalog)
+      return setMessage("You do not have permissions to delete products.");
     if (!confirm("Delete this product?")) return;
 
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("token")
-        : null;
-    if (!token) {
-      setMessage("Please login.");
-      return;
-    }
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) return setMessage("Please login.");
 
     setDeletingId(productId);
     try {
@@ -469,52 +451,59 @@ export default function AdminProductsPage() {
     });
   }, [products, query]);
 
+  /* ----------------- states ----------------- */
   if (loadingUser) {
     return (
-      <SiteLayout>
-        <p className="text-sm text-gray-300/70">Checking access…</p>
-      </SiteLayout>
+      <div className="min-h-screen bg-black text-white">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <p className="text-sm text-gray-300/70">Checking access…</p>
+        </div>
+      </div>
     );
   }
 
   if (!user || !canEditCatalog) {
     const isSales = user?.roleName === "sales_manager";
     return (
-      <SiteLayout>
-        <div className="space-y-4 py-6">
-          <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-            Admin
-          </p>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-            Access denied
-          </h1>
-          <p className="text-sm text-gray-300/70">
-            You need admin or product manager permissions to manage the catalog.
-          </p>
+      <div className="min-h-screen bg-black text-white">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <div className="space-y-4">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Access denied
+            </h1>
+            <p className="text-sm text-gray-300/70">
+              You need admin or product manager permissions to manage the catalog.
+            </p>
 
-          {isSales && (
+            {isSales && (
+              <DripLink
+                href="/sales-admin"
+                className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+              >
+                Go to Sales Manager panel →
+              </DripLink>
+            )}
+
             <DripLink
-              href="/sales-admin"
+              href="/"
               className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
             >
-              Go to Sales Manager panel →
+              Back to homepage
             </DripLink>
-          )}
-
-          <DripLink
-            href="/"
-            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-          >
-            Back to homepage
-          </DripLink>
+          </div>
         </div>
-      </SiteLayout>
+      </div>
     );
   }
 
+  /* ----------------- page ----------------- */
   return (
-    <SiteLayout>
-      <div className="space-y-8 py-6">
+    <div className="min-h-screen text-white">
+      <div className="mx-auto max-w-6xl px-4 py-8 space-y-8">
+        {/* Header */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
@@ -534,6 +523,13 @@ export default function AdminProductsPage() {
               </span>
             </div>
           </div>
+
+          <DripLink
+            href="/admin"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+          >
+            Back to dashboard
+          </DripLink>
         </div>
 
         {message && (
@@ -542,90 +538,142 @@ export default function AdminProductsPage() {
           </div>
         )}
 
-        {/* Create */}
+        {/* Add Product */}
         <div className={panelClass()}>
-          <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
-            Add product
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                Add product
+              </p>
+              <p className="mt-1 text-[12px] text-gray-300/70">
+                Fill the essentials, then optional metadata. Upload an image to finish.
+              </p>
+            </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Name"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newPrice}
-              onChange={(e) => setNewPrice(e.target.value)}
-              placeholder="Price"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newStock}
-              onChange={(e) => setNewStock(e.target.value)}
-              placeholder="Stock"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              placeholder="Category ID (optional)"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newModel}
-              onChange={(e) => setNewModel(e.target.value)}
-              placeholder="Model"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newSerialNumber}
-              onChange={(e) => setNewSerialNumber(e.target.value)}
-              placeholder="Serial number"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newWarrantyStatus}
-              onChange={(e) => setNewWarrantyStatus(e.target.value)}
-              placeholder="Warranty status"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <input
-              value={newDistributorInfo}
-              onChange={(e) => setNewDistributorInfo(e.target.value)}
-              placeholder="Distributor info"
-              className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
-            />
-            <textarea
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="Description"
-              rows={3}
-              className="md:col-span-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white resize-none"
-            />
+            <div className="flex items-center gap-2">
+              <span className={chip("ok")}>Catalog tools</span>
+              <span className={chip("muted")}>Fast create</span>
+            </div>
+          </div>
 
-            <div className="md:col-span-2 flex items-center justify-between gap-3">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
-                className="text-[11px] text-gray-200/70"
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.92fr]">
+            {/* Left */}
+            <div className="space-y-4 flex flex-col">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Product name *"
+                  className={fieldBase}
+                />
+                <input
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  placeholder="Category ID (optional)"
+                  className={fieldBase}
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  placeholder="Price *"
+                  inputMode="decimal"
+                  className={fieldBase}
+                />
+                <input
+                  value={newStock}
+                  onChange={(e) => setNewStock(e.target.value)}
+                  placeholder="Stock *"
+                  inputMode="numeric"
+                  className={fieldBase}
+                />
+              </div>
+
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="Description *"
+                rows={7}
+                className={textAreaBase + " flex-1 min-h-[220px]"}
               />
+            </div>
+
+            {/* Right */}
+            <div className="rounded-[30px] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
+              <p className="text-[10px] font-semibold tracking-[0.26em] uppercase text-gray-300/60">
+                Optional details
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Model" className={fieldBase} />
+                <input value={newSerialNumber} onChange={(e) => setNewSerialNumber(e.target.value)} placeholder="Serial number" className={fieldBase} />
+                <input value={newWarrantyStatus} onChange={(e) => setNewWarrantyStatus(e.target.value)} placeholder="Warranty status" className={fieldBase} />
+                <input value={newDistributorInfo} onChange={(e) => setNewDistributorInfo(e.target.value)} placeholder="Distributor info" className={fieldBase} />
+              </div>
+
+              <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-white/90">Product image</p>
+                    <p className="text-[11px] text-gray-300/60">
+                      {newImageFile ? (
+                        <span className="text-gray-200/80 break-all">{newImageFile.name}</span>
+                      ) : (
+                        "PNG/JPG/WebP recommended"
+                      )}
+                    </p>
+                  </div>
+
+                  <label className={btnBase + " " + btnGhost + " cursor-pointer px-5"}>
+                    Choose file
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-5">
+            <div className="text-[11px] text-gray-300/60">
+              Fields marked with <span className="text-white/80">*</span> are required.
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewName("");
+                  setNewPrice("");
+                  setNewStock("");
+                  setNewDescription("");
+                  setNewImageFile(null);
+                  setNewCategory("");
+                  setNewModel("");
+                  setNewSerialNumber("");
+                  setNewWarrantyStatus("");
+                  setNewDistributorInfo("");
+                  setMessage("");
+                }}
+                className={btnBase + " " + btnGhost}
+                disabled={creating}
+              >
+                Clear
+              </button>
 
               <button
                 type="button"
                 disabled={creating}
                 onClick={handleCreate}
-                className="
-                  h-11 px-6 rounded-full
-                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-                  text-black text-[11px] font-semibold uppercase tracking-[0.18em]
-                  hover:opacity-95 transition active:scale-[0.98]
-                  disabled:opacity-60 disabled:cursor-not-allowed
-                "
+                className={btnBase + " " + btnPrimary}
               >
-                {creating ? "Creating…" : "Create"}
+                {creating ? "Creating…" : "Create product"}
               </button>
             </div>
           </div>
@@ -641,12 +689,12 @@ export default function AdminProductsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search products…"
-              className="h-10 w-full md:w-[420px] rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
+              className="h-11 w-full md:w-[420px] rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white placeholder:text-gray-400/60 focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)]"
             />
           </div>
         </div>
 
-        {/* List */}
+        {/* LIST WRAPPER UPDATED: removed any dark backing container */}
         {loading ? (
           <div className={panelClass()}>
             <p className="text-sm text-gray-300/70">Loading catalog…</p>
@@ -659,14 +707,13 @@ export default function AdminProductsPage() {
           <div className="space-y-4">
             {filteredProducts.map((p) => {
               const isEditing = editingId === p.id;
-
-              let imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
+              const imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
 
               return (
                 <div key={p.id} className={panelClass()}>
                   <div className="flex flex-col lg:flex-row gap-5">
                     <div className="w-full lg:w-[220px] space-y-2">
-                      <div className="w-full aspect-square rounded-[24px] overflow-hidden border border-white/10 bg-white/5">
+                      <div className="w-full aspect-square rounded-[28px] overflow-hidden border border-white/10 bg-white/5">
                         {imageUrl ? (
                           <img
                             src={imageUrl}
@@ -684,9 +731,7 @@ export default function AdminProductsPage() {
                         <span className={chip("muted")}>
                           {p.isActive === false ? "Inactive" : "Active"}
                         </span>
-                        <span className={chip("muted")}>
-                          {getCategoryLabel(p.categoryId)}
-                        </span>
+                        <span className={chip("muted")}>{getCategoryLabel(p.categoryId)}</span>
                         {p.discountRate ? (
                           <span className={chip("warn")}>
                             {Number(p.discountRate).toFixed(2)}% off
@@ -694,41 +739,24 @@ export default function AdminProductsPage() {
                         ) : null}
                       </div>
 
-                      <button
-                        type="button"
-                        disabled={imageUploadingId === p.id}
-                        className="
-                          w-full h-10 rounded-full border border-border bg-white/5
-                          text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                          hover:bg-white/10 transition active:scale-[0.98]
-                          disabled:opacity-60 disabled:cursor-not-allowed
-                        "
-                      >
-                        <label className="w-full h-full flex items-center justify-center cursor-pointer">
-                          {imageUploadingId === p.id
-                            ? "Uploading…"
-                            : imageUrl
-                            ? "Replace image"
-                            : "Upload image"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0] || null;
-                              if (!file) return;
-                              try {
-                                await uploadProductImage(p.id, file);
-                              } catch (err) {
-                                console.error(
-                                  "Inline image upload error:",
-                                  err
-                                );
-                              }
-                            }}
-                          />
-                        </label>
-                      </button>
+                      <label className={btnBase + " " + btnGhost + " w-full cursor-pointer px-4"}>
+                        {imageUploadingId === p.id
+                          ? "Uploading…"
+                          : imageUrl
+                          ? "Replace image"
+                          : "Upload image"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={imageUploadingId === p.id}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (!file) return;
+                            await uploadProductImage(p.id, file);
+                          }}
+                        />
+                      </label>
                     </div>
 
                     <div className="flex-1 space-y-4">
@@ -738,30 +766,25 @@ export default function AdminProductsPage() {
                             <input
                               value={editName}
                               onChange={(e) => setEditName(e.target.value)}
-                              className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white"
+                              className={fieldBase + " w-full"}
                             />
                           ) : (
-                            <h2 className="text-lg font-semibold text-white truncate">
-                              {p.name}
-                            </h2>
+                            <h2 className="text-lg font-semibold text-white truncate">{p.name}</h2>
                           )}
 
                           <p className="text-[11px] text-gray-300/60">
-                            ID: {p.id} · Model: {p.model || "—"} · Serial:{" "}
-                            {p.serialNumber || "—"}
+                            ID: {p.id} · Model: {p.model || "—"} · Serial: {p.serialNumber || "—"}
                           </p>
                         </div>
 
                         <div className="flex items-center gap-3">
                           {isEditing ? (
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">
-                                $
-                              </span>
+                              <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">$</span>
                               <input
                                 value={editPrice}
                                 onChange={(e) => setEditPrice(e.target.value)}
-                                className="h-11 w-28 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white text-right"
+                                className={fieldBase + " w-28 text-right"}
                               />
                             </div>
                           ) : (
@@ -773,7 +796,7 @@ export default function AdminProductsPage() {
                           {!isEditing ? (
                             <StockBadge
                               stock={p.stock}
-                              tone="muted"
+                              ink="light"
                               className="border-white/10 bg-white/5 text-gray-100/80"
                             />
                           ) : (
@@ -784,7 +807,7 @@ export default function AdminProductsPage() {
                               <input
                                 value={editStock}
                                 onChange={(e) => setEditStock(e.target.value)}
-                                className="h-11 w-24 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white text-right"
+                                className={fieldBase + " w-24 text-right"}
                               />
                             </div>
                           )}
@@ -800,7 +823,7 @@ export default function AdminProductsPage() {
                             value={editDescription}
                             onChange={(e) => setEditDescription(e.target.value)}
                             rows={3}
-                            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white resize-none"
+                            className={textAreaBase + " w-full"}
                           />
                         ) : (
                           <p className="text-sm text-gray-200/80 leading-relaxed">
@@ -820,13 +843,7 @@ export default function AdminProductsPage() {
                               type="button"
                               disabled={savingEdit}
                               onClick={() => handleSaveEdit(p.id)}
-                              className="
-                                h-10 px-5 rounded-full
-                                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-                                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
-                                hover:opacity-95 transition active:scale-[0.98]
-                                disabled:opacity-60 disabled:cursor-not-allowed
-                              "
+                              className={btnBase + " " + btnPrimary}
                             >
                               {savingEdit ? "Saving…" : "Save"}
                             </button>
@@ -835,12 +852,7 @@ export default function AdminProductsPage() {
                               type="button"
                               disabled={savingEdit}
                               onClick={cancelEdit}
-                              className="
-                                h-10 px-5 rounded-full border border-border bg-white/5
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                                hover:bg-white/10 transition active:scale-[0.98]
-                                disabled:opacity-60 disabled:cursor-not-allowed
-                              "
+                              className={btnBase + " " + btnGhost}
                             >
                               Cancel
                             </button>
@@ -850,11 +862,7 @@ export default function AdminProductsPage() {
                             <button
                               type="button"
                               onClick={() => startEdit(p)}
-                              className="
-                                h-10 px-5 rounded-full border border-border bg-white/5
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                                hover:bg-white/10 transition active:scale-[0.98]
-                              "
+                              className={btnBase + " " + btnGhost}
                             >
                               Edit
                             </button>
@@ -863,12 +871,7 @@ export default function AdminProductsPage() {
                               type="button"
                               disabled={deletingId === p.id}
                               onClick={() => handleDelete(p.id)}
-                              className="
-                                h-10 px-5 rounded-full border border-red-500/25 bg-red-500/10
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-red-100
-                                hover:bg-red-500/15 transition active:scale-[0.98]
-                                disabled:opacity-60 disabled:cursor-not-allowed
-                              "
+                              className={btnBase + " " + btnDanger}
                             >
                               {deletingId === p.id ? "Deleting…" : "Delete"}
                             </button>
@@ -883,6 +886,6 @@ export default function AdminProductsPage() {
           </div>
         )}
       </div>
-    </SiteLayout>
+    </div>
   );
 }

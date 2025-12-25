@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import SiteLayout from "../../../components/SiteLayout";
 import DripLink from "../../../components/DripLink";
 import {
   apiRequest,
@@ -13,8 +12,9 @@ import { useAuth } from "../../../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+/* Lighter admin glass surface (no navbar wrapper) */
 function panelClass() {
-  return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
+  return "rounded-[28px] border border-border bg-white/[0.04] backdrop-blur-xl p-5 shadow-[0_16px_60px_rgba(0,0,0,0.35)]";
 }
 
 function chipBase() {
@@ -47,6 +47,16 @@ function handleAuthRedirect(err, nextPath) {
   }
   return false;
 }
+
+/* Unified compact button + select sizing */
+const actionBtn =
+  "h-9 px-4 rounded-full border border-border bg-white/5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10 transition active:scale-[0.98]";
+
+const primaryBtn =
+  "h-9 px-4 rounded-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] text-black text-[10px] font-semibold uppercase tracking-[0.18em] hover:opacity-95 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed";
+
+const selectStyle =
+  "h-9 rounded-full border border-white/10 bg-white/5 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)] disabled:opacity-60 disabled:cursor-not-allowed";
 
 export default function AdminOrdersPage() {
   const { user, loadingUser } = useAuth();
@@ -189,18 +199,25 @@ export default function AdminOrdersPage() {
     }
   }
 
+  /* ------- UI wrappers (navbar removed) ------- */
+  const PageShell = ({ children }) => (
+    <div className="min-h-screen text-white">
+      <div className="mx-auto max-w-6xl px-4 py-8">{children}</div>
+    </div>
+  );
+
   if (loadingUser) {
     return (
-      <SiteLayout>
+      <PageShell>
         <p className="text-sm text-gray-300/70">Checking access…</p>
-      </SiteLayout>
+      </PageShell>
     );
   }
 
   if (!user || !isAdminPanelRole(user)) {
     return (
-      <SiteLayout>
-        <div className="space-y-4 py-6">
+      <PageShell>
+        <div className="space-y-4">
           <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
             Admin
           </p>
@@ -217,34 +234,44 @@ export default function AdminOrdersPage() {
             Back to homepage
           </DripLink>
         </div>
-      </SiteLayout>
+      </PageShell>
     );
   }
 
   return (
-    <SiteLayout>
-      <div className="space-y-6 py-6">
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-            Sneaks-up · Admin
-          </p>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-            Orders
-          </h1>
+    <PageShell>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Sneaks-up · Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Orders
+            </h1>
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <span className={chip("muted")}>{stats.total} total</span>
-            <span className={chip("muted")}>{stats.processing} processing</span>
-            <span className={chip("muted")}>{stats.inTransit} in-transit</span>
-            <span className={chip("muted")}>{stats.delivered} delivered</span>
-            <span className={chip(stats.cancelled ? "warn" : "muted")}>
-              {stats.cancelled} cancelled
-            </span>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <span className={chip("muted")}>{stats.total} total</span>
+              <span className={chip("muted")}>{stats.processing} processing</span>
+              <span className={chip("muted")}>{stats.inTransit} in-transit</span>
+              <span className={chip("muted")}>{stats.delivered} delivered</span>
+              <span className={chip(stats.cancelled ? "warn" : "muted")}>
+                {stats.cancelled} cancelled
+              </span>
+            </div>
           </div>
+
+          <DripLink
+            href="/admin"
+            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+          >
+            Back to dashboard
+          </DripLink>
         </div>
 
         {message && (
-          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur px-4 py-3 text-[11px] text-gray-200/80">
             {message}
           </div>
         )}
@@ -273,9 +300,7 @@ export default function AdminOrdersPage() {
                       </p>
                       <p className="text-[11px] text-gray-300/60">
                         Created:{" "}
-                        {o.createdAt
-                          ? new Date(o.createdAt).toLocaleString()
-                          : "—"}
+                        {o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}
                       </p>
                       <p className="text-[11px] text-gray-300/60">
                         Status: {o.status || "—"}
@@ -286,11 +311,7 @@ export default function AdminOrdersPage() {
                       <button
                         type="button"
                         onClick={() => handleToggleExpand(orderId)}
-                        className="
-                          h-10 px-5 rounded-full border border-border bg-white/5
-                          text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                          hover:bg-white/10 transition active:scale-[0.98]
-                        "
+                        className={actionBtn}
                       >
                         {expanded ? "Hide items" : "View items"}
                       </button>
@@ -299,13 +320,7 @@ export default function AdminOrdersPage() {
                         type="button"
                         disabled={invoiceLoadingId === orderId}
                         onClick={() => handleDownloadInvoice(orderId)}
-                        className="
-                          h-10 px-5 rounded-full
-                          bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-                          text-black text-[11px] font-semibold uppercase tracking-[0.18em]
-                          hover:opacity-95 transition active:scale-[0.98]
-                          disabled:opacity-60 disabled:cursor-not-allowed
-                        "
+                        className={primaryBtn}
                       >
                         {invoiceLoadingId === orderId ? "Saving…" : "Invoice PDF"}
                       </button>
@@ -313,10 +328,8 @@ export default function AdminOrdersPage() {
                       <select
                         disabled={statusUpdatingId === orderId}
                         value={o.status || "processing"}
-                        onChange={(e) =>
-                          handleUpdateStatus(orderId, e.target.value)
-                        }
-                        className="h-10 rounded-full border border-white/10 bg-white/5 px-4 text-[11px] text-white"
+                        onChange={(e) => handleUpdateStatus(orderId, e.target.value)}
+                        className={selectStyle}
                       >
                         <option value="processing">processing</option>
                         <option value="in_transit">in-transit</option>
@@ -333,16 +346,13 @@ export default function AdminOrdersPage() {
                       </p>
 
                       {items.length === 0 ? (
-                        <p className="text-sm text-gray-300/70">
-                          Loading items…
-                        </p>
+                        <p className="text-sm text-gray-300/70">Loading items…</p>
                       ) : (
                         <div className="space-y-2">
                           {items.map((item) => {
                             const p = productsMap.get(item.productId);
                             const unitPrice = Number(item.unitPrice || 0);
-                            const lineTotal =
-                              unitPrice * (item.quantity || 0);
+                            const lineTotal = unitPrice * (item.quantity || 0);
 
                             let imageUrl = p?.imageUrl || null;
                             if (imageUrl && !imageUrl.startsWith("http")) {
@@ -354,14 +364,11 @@ export default function AdminOrdersPage() {
                                 key={item.id}
                                 className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-white/5 px-3 py-3"
                               >
-                                <div className="w-14 h-14 rounded-2xl bg-black/30 border border-white/10 overflow-hidden flex items-center justify-center">
+                                <div className="w-14 h-14 rounded-2xl bg-black/20 border border-white/10 overflow-hidden flex items-center justify-center">
                                   {imageUrl ? (
                                     <img
                                       src={imageUrl}
-                                      alt={
-                                        p?.name ||
-                                        `Product #${item.productId}`
-                                      }
+                                      alt={p?.name || `Product #${item.productId}`}
                                       className="w-full h-full object-cover"
                                     />
                                   ) : (
@@ -376,8 +383,7 @@ export default function AdminOrdersPage() {
                                     {p ? p.name : `Product #${item.productId}`}
                                   </p>
                                   <p className="text-[11px] text-gray-300/60">
-                                    Qty: {item.quantity} · $
-                                    {unitPrice.toFixed(2)} each
+                                    Qty: {item.quantity} · ${unitPrice.toFixed(2)} each
                                   </p>
                                 </div>
 
@@ -397,6 +403,6 @@ export default function AdminOrdersPage() {
           </div>
         )}
       </div>
-    </SiteLayout>
+    </PageShell>
   );
 }
