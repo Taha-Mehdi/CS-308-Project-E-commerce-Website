@@ -80,16 +80,16 @@ export default function SiteLayout({ children }) {
       { href: "/cart", label: "Bag" },
       { href: "/orders", label: "Orders", requiresAuth: true },
 
-      // One "Admin" entry for both roles, but different destinations.
+
       {
-        label: "Admin",
+        label: "Panel",
         requiresAdmin: true,
         getHref: (u) =>
-          u?.roleName === "admin"
-            ? "/admin"
-            : u?.roleName === "sales_manager"
-            ? "/sales-admin"
-            : null,
+            u?.roleName === "product_manager"
+                ? "/admin"
+                : u?.roleName === "sales_manager"
+                    ? "/sales-admin"
+                    : null,
       },
     ],
     []
@@ -193,7 +193,7 @@ export default function SiteLayout({ children }) {
       if (link.requiresAdmin) {
         if (!user) return null;
 
-        const allowed = ["admin", "sales_manager"].includes(user.roleName);
+        const allowed = ["product_manager", "sales_manager"].includes(user.roleName);
         if (!allowed) return null;
 
         const href = link.getHref(user);
