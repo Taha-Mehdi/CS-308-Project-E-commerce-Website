@@ -6,6 +6,7 @@ import SiteLayout from "../../../components/SiteLayout";
 import ActionButton from "../../../components/ActionButton";
 import StockBadge from "../../../components/StockBadge";
 import { useAuth } from "../../../context/AuthContext";
+import { applyDiscountApi } from "../../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -28,9 +29,12 @@ function chipBase() {
 }
 function chip(tone = "muted") {
   const base = chipBase();
-  if (tone === "live") return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
-  if (tone === "warn") return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
-  if (tone === "danger") return `${base} border-red-500/25 bg-red-500/10 text-red-200`;
+  if (tone === "live")
+    return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+  if (tone === "warn")
+    return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
+  if (tone === "danger")
+    return `${base} border-red-500/25 bg-red-500/10 text-red-200`;
   return `${base} border-white/10 bg-white/5 text-gray-200/80`;
 }
 
@@ -44,6 +48,11 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
+  // ---- DISCOUNTS (sales manager) ----
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [discountPct, setDiscountPct] = useState("");
+  const [discountBusy, setDiscountBusy] = useState(false);
 
   // Create product form
   const [newName, setNewName] = useState("");
@@ -80,7 +89,20 @@ export default function AdminProductsPage() {
   // Reviews (REAL API STATE)
   const [pendingReviews, setPendingReviews] = useState([]);
 
-  function ensureAdmin() {
+  function hasCatalogAccess() {
+    // Admin UI was originally roleId===1, but sales managers need discount access.
+    // If your /auth/me returns roleName, we’ll use it. Otherwise admin still works.
+    const roleName = user?.roleName;
+    const roleId = user?.roleId;
+
+    if (roleId === 1) return true; // admin (legacy assumption used elsewhere)
+    if (roleName === "sales_manager") return true;
+
+    return false;
+  }
+
+  function ensureAdminOnly() {
+    // Catalog create/edit/delete should remain admin-only (unless your spec says otherwise)
     if (!user || user.roleId !== 1) {
       setMessage("You do not have admin permissions.");
       return false;
@@ -104,24 +126,26 @@ export default function AdminProductsPage() {
       setLoading(true);
       setMessage("");
 
-      if (!user || user.roleId !== 1) {
+      if (!user || !hasCatalogAccess()) {
         setLoading(false);
         return;
       }
 
       const token =
-        typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("token")
+          : null;
 
       try {
-        // Products
+        // Products (public endpoint)
         const prodRes = await fetch(`${apiBase}/products`);
         if (prodRes.ok) {
           const j = await safeJson(prodRes);
           if (Array.isArray(j)) setProducts(j);
         }
 
-        // Pending reviews
-        if (token) {
+        // Pending reviews (admin-only)
+        if (token && user?.roleId === 1) {
           const revRes = await fetch(`${apiBase}/reviews/pending`, {
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -130,6 +154,8 @@ export default function AdminProductsPage() {
             const reviewsData = await revRes.json();
             setPendingReviews(Array.isArray(reviewsData) ? reviewsData : []);
           }
+        } else {
+          setPendingReviews([]);
         }
       } catch (err) {
         console.error("Admin load error:", err);
@@ -140,15 +166,85 @@ export default function AdminProductsPage() {
     }
 
     if (!loadingUser) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, loadingUser, user]);
+
+  // ---------- DISCOUNT HELPERS ----------
+  const selectedCount = selectedIds.size;
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelected() {
+    setSelectedIds(new Set());
+  }
+
+  function selectAllVisible(list) {
+    setSelectedIds(new Set(list.map((p) => p.id)));
+  }
+
+  async function runDiscount(ratePct) {
+    if (!user || !hasCatalogAccess()) {
+      setMessage("Access denied.");
+      return;
+    }
+    if (selectedIds.size === 0) {
+      setMessage("Select at least one product to discount.");
+      return;
+    }
+
+    const rate = Number(ratePct);
+    if (Number.isNaN(rate) || rate < 0 || rate > 100) {
+      setMessage("Discount must be a number between 0 and 100.");
+      return;
+    }
+
+    setDiscountBusy(true);
+    setMessage("");
+
+    try {
+      const productIds = Array.from(selectedIds);
+      const result = await applyDiscountApi({
+        productIds,
+        discountRate: rate,
+      });
+
+      // Backend returns { message, updatedProducts }
+      const updated = result?.updatedProducts || [];
+      if (updated.length) {
+        const map = new Map(updated.map((p) => [p.id, p]));
+        setProducts((prev) => prev.map((p) => map.get(p.id) || p));
+      }
+
+      if (rate <= 0) {
+        setMessage("Discount cleared and original prices restored.");
+      } else {
+        setMessage(
+          `Discount applied (${rate.toFixed(2)}%) — wishlist users notified.`
+        );
+      }
+    } catch (err) {
+      console.error("Apply discount error:", err);
+      setMessage(err?.message || "Failed to apply discount.");
+    } finally {
+      setDiscountBusy(false);
+    }
+  }
 
   // ---------- CREATE PRODUCT (with optional image) ----------
   async function handleCreateProduct(e) {
     e.preventDefault();
-    if (!ensureAdmin()) return;
+    if (!ensureAdminOnly()) return;
 
     let token = null;
-    if (typeof window !== "undefined") token = window.localStorage.getItem("token") || null;
+    if (typeof window !== "undefined")
+      token = window.localStorage.getItem("token") || null;
 
     if (!token) {
       setMessage("Please login as admin.");
@@ -266,7 +362,9 @@ export default function AdminProductsPage() {
       }
 
       if (data?.product) {
-        setProducts((prev) => prev.map((p) => (p.id === productId ? data.product : p)));
+        setProducts((prev) =>
+          prev.map((p) => (p.id === productId ? data.product : p))
+        );
       }
 
       return data;
@@ -323,7 +421,9 @@ export default function AdminProductsPage() {
     setEditSerialNumber(p.serialNumber || "");
     setEditWarrantyStatus(p.warrantyStatus || "");
     setEditDistributorInfo(p.distributorInfo || "");
-    setEditCategory(p.categoryId !== null && p.categoryId !== undefined ? String(p.categoryId) : "");
+    setEditCategory(
+      p.categoryId !== null && p.categoryId !== undefined ? String(p.categoryId) : ""
+    );
   }
 
   function cancelEdit() {
@@ -340,7 +440,7 @@ export default function AdminProductsPage() {
   }
 
   async function handleSaveEdit(productId) {
-    if (!ensureAdmin()) return;
+    if (!ensureAdminOnly()) return;
 
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -403,7 +503,7 @@ export default function AdminProductsPage() {
 
   // ---------- DELETE PRODUCT ----------
   async function handleDelete(productId) {
-    if (!ensureAdmin()) return;
+    if (!ensureAdminOnly()) return;
     if (!confirm("Delete this product?")) return;
 
     const token =
@@ -439,7 +539,9 @@ export default function AdminProductsPage() {
     const q = query.trim().toLowerCase();
     if (!q) return products;
     return products.filter((p) => {
-      const hay = `${p.name || ""} ${p.description || ""} ${p.model || ""} ${p.serialNumber || ""}`.toLowerCase();
+      const hay = `${p.name || ""} ${p.description || ""} ${p.model || ""} ${
+        p.serialNumber || ""
+      }`.toLowerCase();
       return hay.includes(q);
     });
   }, [products, query]);
@@ -448,12 +550,12 @@ export default function AdminProductsPage() {
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-300/70">Checking admin access…</p>
+        <p className="text-sm text-gray-300/70">Checking access…</p>
       </SiteLayout>
     );
   }
 
-  if (!user || user.roleId !== 1) {
+  if (!user || !hasCatalogAccess()) {
     return (
       <SiteLayout>
         <div className="space-y-4 py-6">
@@ -464,7 +566,7 @@ export default function AdminProductsPage() {
             Access denied
           </h1>
           <p className="text-sm text-gray-300/70">
-            You need admin permissions to manage the catalog.
+            You need admin or sales manager permissions to manage discounts.
           </p>
           <DripLink
             href="/"
@@ -476,6 +578,8 @@ export default function AdminProductsPage() {
       </SiteLayout>
     );
   }
+
+  const canAdminEditCatalog = user?.roleId === 1;
 
   return (
     <SiteLayout>
@@ -490,7 +594,7 @@ export default function AdminProductsPage() {
               Product catalog
             </h1>
             <p className="text-sm text-gray-300/70">
-              Create drops, manage stock, and approve reviews.
+              Manage products. Sales managers can apply discounts; admins can also edit the catalog.
             </p>
 
             <div className="pt-2 flex flex-wrap gap-2">
@@ -498,7 +602,7 @@ export default function AdminProductsPage() {
               <span className={chip(pendingReviews.length ? "warn" : "muted")}>
                 {pendingReviews.length} pending reviews
               </span>
-              <span className={chip("live")}>Live admin</span>
+              <span className={chip("live")}>Live</span>
             </div>
           </div>
 
@@ -518,243 +622,320 @@ export default function AdminProductsPage() {
           </div>
         )}
 
-        {/* PENDING REVIEWS */}
+        {/* DISCOUNTS PANEL */}
         <div className={panelClass()}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-1">
               <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
-                Pending reviews
+                Discounts
               </p>
-              <p className="text-sm text-gray-200/80 mt-1">
-                Approve comments to make them visible.
+              <p className="text-sm text-gray-200/80">
+                Select products below, set a discount percentage, and apply.
+              </p>
+              <p className="text-[11px] text-gray-300/60">
+                Selected: <span className="text-gray-100">{selectedCount}</span>
               </p>
             </div>
-            <span className={chip(pendingReviews.length ? "warn" : "muted")}>
-              {pendingReviews.length} waiting
-            </span>
-          </div>
 
-          <div className="mt-4">
-            {pendingReviews.length === 0 ? (
-              <p className="text-sm text-gray-300/70">No pending reviews.</p>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {pendingReviews.map((rev) => (
-                  <div
-                    key={rev.id}
-                    className="rounded-[24px] border border-white/10 bg-white/5 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-white">
-                          Review #{rev.id}
-                        </p>
-                        <p className="text-[11px] text-gray-300/60">
-                          User: {rev.userId} · Product: {rev.productId}
-                        </p>
-                      </div>
-                      <span className={chip("muted")}>
-                        {"★"
-                          .repeat(Math.max(1, Math.min(5, rev.rating || 1)))
-                          .padEnd(5, "☆")}
-                      </span>
-                    </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <input
+                value={discountPct}
+                onChange={(e) => setDiscountPct(e.target.value)}
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                placeholder="15"
+                className="h-10 w-full sm:w-32 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+              />
 
-                    <p className="mt-2 text-sm text-gray-200/80 italic">
-                      “{rev.comment}”
-                    </p>
+              <button
+                type="button"
+                disabled={discountBusy}
+                onClick={() => runDiscount(discountPct)}
+                className="
+                  h-10 px-5 rounded-full
+                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                  text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                  hover:opacity-95 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+              >
+                {discountBusy ? "Applying…" : "Apply discount"}
+              </button>
 
-                    <div className="mt-3 flex items-center gap-2">
-                      <ActionButton
-                        size="xs"
-                        variant="success"
-                        onClick={() => handleReviewAction(rev.id, "approved")}
-                      >
-                        Approve
-                      </ActionButton>
-                      <ActionButton
-                        size="xs"
-                        variant="outline"
-                        onClick={() => handleReviewAction(rev.id, "rejected")}
-                      >
-                        Reject
-                      </ActionButton>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              <button
+                type="button"
+                disabled={discountBusy}
+                onClick={() => runDiscount(0)}
+                className="
+                  h-10 px-5 rounded-full border border-border bg-white/5
+                  text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                  hover:bg-white/10 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+              >
+                Clear discount
+              </button>
+
+              <button
+                type="button"
+                disabled={discountBusy}
+                onClick={clearSelected}
+                className="
+                  h-10 px-5 rounded-full border border-border bg-white/5
+                  text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                  hover:bg-white/10 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+              >
+                Clear selection
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* CREATE PRODUCT */}
-        <form onSubmit={handleCreateProduct} className={panelClass()}>
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
-                New drop
-              </p>
-              <p className="text-sm text-gray-200/80 mt-1">
-                Add a new pair to the catalog. Image is optional.
-              </p>
+        {/* PENDING REVIEWS (admin-only visibility) */}
+        {canAdminEditCatalog && (
+          <div className={panelClass()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                  Pending reviews
+                </p>
+                <p className="text-sm text-gray-200/80 mt-1">
+                  Approve comments to make them visible.
+                </p>
+              </div>
+              <span className={chip(pendingReviews.length ? "warn" : "muted")}>
+                {pendingReviews.length} waiting
+              </span>
             </div>
 
-            <button
-              type="submit"
-              disabled={creating}
-              className="
-                h-10 px-6 rounded-full
-                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
-                hover:opacity-95 transition active:scale-[0.98]
-                disabled:opacity-60 disabled:cursor-not-allowed
-              "
-            >
-              {creating ? "Creating…" : "Create product"}
-            </button>
+            <div className="mt-4">
+              {pendingReviews.length === 0 ? (
+                <p className="text-sm text-gray-300/70">No pending reviews.</p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {pendingReviews.map((rev) => (
+                    <div
+                      key={rev.id}
+                      className="rounded-[24px] border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white">
+                            Review #{rev.id}
+                          </p>
+                          <p className="text-[11px] text-gray-300/60">
+                            User: {rev.userId} · Product: {rev.productId}
+                          </p>
+                        </div>
+                        <span className={chip("muted")}>
+                          {"★"
+                            .repeat(Math.max(1, Math.min(5, rev.rating || 1)))
+                            .padEnd(5, "☆")}
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-sm text-gray-200/80 italic">
+                        “{rev.comment}”
+                      </p>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <ActionButton
+                          size="xs"
+                          variant="success"
+                          onClick={() => handleReviewAction(rev.id, "approved")}
+                        >
+                          Approve
+                        </ActionButton>
+                        <ActionButton
+                          size="xs"
+                          variant="outline"
+                          onClick={() => handleReviewAction(rev.id, "rejected")}
+                        >
+                          Reject
+                        </ActionButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+        )}
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1.5 lg:col-span-2">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Name *
-              </label>
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                required
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="Air Burst Retro 'Night Fade'"
-              />
-            </div>
+        {/* CREATE PRODUCT (admin-only) */}
+        {canAdminEditCatalog && (
+          <form onSubmit={handleCreateProduct} className={panelClass()}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                  New drop
+                </p>
+                <p className="text-sm text-gray-200/80 mt-1">
+                  Add a new pair to the catalog. Image is optional.
+                </p>
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Price *
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={newPrice}
-                onChange={(e) => setNewPrice(e.target.value)}
-                required
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="129.00"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Stock *
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={newStock}
-                onChange={(e) => setNewStock(e.target.value)}
-                required
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="24"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Category
-              </label>
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100 focus:outline-none focus:ring-2 focus:ring-white/15"
+              <button
+                type="submit"
+                disabled={creating}
+                className="
+                  h-10 px-6 rounded-full
+                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                  text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                  hover:opacity-95 transition active:scale-[0.98]
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
               >
-                <option value="">Select</option>
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={String(opt.id)}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                {creating ? "Creating…" : "Create product"}
+              </button>
             </div>
 
-            <div className="space-y-1.5 lg:col-span-2">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Description
-              </label>
-              <textarea
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                rows={3}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15 resize-none"
-                placeholder="Story the drop — fit, materials, and why it hits different."
-              />
-            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5 lg:col-span-2">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Name *
+                </label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="Air Burst Retro 'Night Fade'"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Image
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
-                className="w-full text-[11px] text-gray-200 file:text-[11px] file:px-4 file:py-2 file:rounded-full file:border file:border-white/10 file:bg-white/5 file:text-gray-100 file:mr-3 file:hover:bg-white/10"
-              />
-              <p className="text-[11px] text-gray-300/55 leading-snug">
-                Optional. Recommended for clean product cards.
-              </p>
-            </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Price *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  required
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="129.00"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Model
-              </label>
-              <input
-                value={newModel}
-                onChange={(e) => setNewModel(e.target.value)}
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="SB Dunk"
-              />
-            </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Stock *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={newStock}
+                  onChange={(e) => setNewStock(e.target.value)}
+                  required
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="24"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Serial number
-              </label>
-              <input
-                value={newSerialNumber}
-                onChange={(e) => setNewSerialNumber(e.target.value)}
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="Manufacturer code"
-              />
-            </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Category
+                </label>
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100 focus:outline-none focus:ring-2 focus:ring-white/15"
+                >
+                  <option value="">Select</option>
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={String(opt.id)}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Warranty
-              </label>
-              <input
-                value={newWarrantyStatus}
-                onChange={(e) => setNewWarrantyStatus(e.target.value)}
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="1 year official"
-              />
-            </div>
+              <div className="space-y-1.5 lg:col-span-2">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Description
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15 resize-none"
+                  placeholder="Story the drop — fit, materials, and why it hits different."
+                />
+              </div>
 
-            <div className="space-y-1.5 lg:col-span-2">
-              <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
-                Distributor
-              </label>
-              <input
-                value={newDistributorInfo}
-                onChange={(e) => setNewDistributorInfo(e.target.value)}
-                className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
-                placeholder="Sneaks-Up TR"
-              />
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
+                  className="w-full text-[11px] text-gray-200 file:text-[11px] file:px-4 file:py-2 file:rounded-full file:border file:border-white/10 file:bg-white/5 file:text-gray-100 file:mr-3 file:hover:bg-white/10"
+                />
+                <p className="text-[11px] text-gray-300/55 leading-snug">
+                  Optional. Recommended for clean product cards.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Model
+                </label>
+                <input
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="SB Dunk"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Serial number
+                </label>
+                <input
+                  value={newSerialNumber}
+                  onChange={(e) => setNewSerialNumber(e.target.value)}
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="Manufacturer code"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Warranty
+                </label>
+                <input
+                  value={newWarrantyStatus}
+                  onChange={(e) => setNewWarrantyStatus(e.target.value)}
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="1 year official"
+                />
+              </div>
+
+              <div className="space-y-1.5 lg:col-span-2">
+                <label className="text-[11px] uppercase tracking-[0.2em] text-gray-300/70">
+                  Distributor
+                </label>
+                <input
+                  value={newDistributorInfo}
+                  onChange={(e) => setNewDistributorInfo(e.target.value)}
+                  className="w-full h-11 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="Sneaks-Up TR"
+                />
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        )}
 
         {/* CATALOG HEADER */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -763,7 +944,7 @@ export default function AdminProductsPage() {
               Catalog
             </p>
             <p className="text-sm text-gray-200/80">
-              Edit drops, update stock, replace imagery.
+              Select items for discounts. Admins can edit drops, update stock, and replace imagery.
             </p>
           </div>
 
@@ -774,6 +955,17 @@ export default function AdminProductsPage() {
               placeholder="Search name, model, serial..."
               className="h-10 w-full md:w-72 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/15"
             />
+            <button
+              type="button"
+              onClick={() => selectAllVisible(filteredProducts)}
+              className="
+                h-10 px-4 rounded-full border border-border bg-white/5
+                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                hover:bg-white/10 transition active:scale-[0.98]
+              "
+            >
+              Select all
+            </button>
             <span className={chip("muted")}>{filteredProducts.length} shown</span>
           </div>
         </div>
@@ -796,12 +988,32 @@ export default function AdminProductsPage() {
               const imageUrl = p.imageUrl ? `${apiBase}${p.imageUrl}` : null;
 
               const activeLabel = p.isActive === false ? "Inactive" : "Active";
+              const isSelected = selectedIds.has(p.id);
 
               return (
                 <div key={p.id} className={panelClass()}>
                   <div className="flex flex-col lg:flex-row gap-5">
                     {/* IMAGE */}
                     <div className="flex flex-col items-start gap-2 w-full lg:w-[220px]">
+                      <div className="w-full flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-gray-200/80">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelected(p.id)}
+                            className="h-4 w-4 rounded border border-white/20 bg-white/5"
+                          />
+                          Select
+                        </label>
+                        {p.discountRate ? (
+                          <span className={chip("warn")}>
+                            {Number(p.discountRate).toFixed(2)}% off
+                          </span>
+                        ) : (
+                          <span className={chip("muted")}>No discount</span>
+                        )}
+                      </div>
+
                       <div className="w-full aspect-square rounded-[24px] overflow-hidden border border-white/10 bg-white/5">
                         {imageUrl ? (
                           <img
@@ -816,42 +1028,46 @@ export default function AdminProductsPage() {
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        disabled={imageUploadingId === p.id}
-                        className="
-                          w-full h-10 rounded-full border border-border bg-white/5
-                          text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                          hover:bg-white/10 transition active:scale-[0.98]
-                          disabled:opacity-60 disabled:cursor-not-allowed
-                        "
-                      >
-                        <label className="w-full h-full flex items-center justify-center cursor-pointer">
-                          {imageUploadingId === p.id
-                            ? "Uploading…"
-                            : imageUrl
-                            ? "Replace image"
-                            : "Upload image"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0] || null;
-                              if (!file) return;
-                              try {
-                                await uploadProductImage(p.id, file);
-                              } catch (err) {
-                                console.error("Inline image upload error:", err);
-                              }
-                            }}
-                          />
-                        </label>
-                      </button>
+                      {canAdminEditCatalog && (
+                        <button
+                          type="button"
+                          disabled={imageUploadingId === p.id}
+                          className="
+                            w-full h-10 rounded-full border border-border bg-white/5
+                            text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                            hover:bg-white/10 transition active:scale-[0.98]
+                            disabled:opacity-60 disabled:cursor-not-allowed
+                          "
+                        >
+                          <label className="w-full h-full flex items-center justify-center cursor-pointer">
+                            {imageUploadingId === p.id
+                              ? "Uploading…"
+                              : imageUrl
+                              ? "Replace image"
+                              : "Upload image"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0] || null;
+                                if (!file) return;
+                                try {
+                                  await uploadProductImage(p.id, file);
+                                } catch (err) {
+                                  console.error("Inline image upload error:", err);
+                                }
+                              }}
+                            />
+                          </label>
+                        </button>
+                      )}
 
                       <div className="flex flex-wrap gap-2">
                         <span className={chip("muted")}>{activeLabel}</span>
-                        <span className={chip("muted")}>{getCategoryLabel(p.categoryId)}</span>
+                        <span className={chip("muted")}>
+                          {getCategoryLabel(p.categoryId)}
+                        </span>
                       </div>
                     </div>
 
@@ -872,7 +1088,8 @@ export default function AdminProductsPage() {
                           )}
 
                           <p className="text-[11px] text-gray-300/60">
-                            ID: {p.id} · Model: {p.model || "—"} · Serial: {p.serialNumber || "—"}
+                            ID: {p.id} · Model: {p.model || "—"} · Serial:{" "}
+                            {p.serialNumber || "—"}
                           </p>
                         </div>
 
@@ -938,126 +1155,67 @@ export default function AdminProductsPage() {
                         )}
                       </div>
 
-                      {/* SPECS */}
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
-                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
-                            Warranty
-                          </p>
-                          {isEditing ? (
-                            <input
-                              value={editWarrantyStatus}
-                              onChange={(e) => setEditWarrantyStatus(e.target.value)}
-                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-                            />
-                          ) : (
-                            <p className="mt-2 text-sm text-gray-200/80">
-                              {p.warrantyStatus || "Standard"}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
-                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
-                            Distributor
-                          </p>
-                          {isEditing ? (
-                            <input
-                              value={editDistributorInfo}
-                              onChange={(e) => setEditDistributorInfo(e.target.value)}
-                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-                            />
-                          ) : (
-                            <p className="mt-2 text-sm text-gray-200/80 truncate">
-                              {p.distributorInfo || "Official store"}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="rounded-[20px] border border-white/10 bg-white/5 p-3">
-                          <p className="text-[10px] uppercase tracking-[0.18em] text-gray-300/60">
-                            Category
-                          </p>
-                          {isEditing ? (
-                            <select
-                              value={editCategory}
-                              onChange={(e) => setEditCategory(e.target.value)}
-                              className="mt-2 w-full h-10 rounded-full border border-white/10 bg-black/20 px-4 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-                            >
-                              <option value="">Uncategorized</option>
-                              {CATEGORY_OPTIONS.map((opt) => (
-                                <option key={opt.id} value={String(opt.id)}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <p className="mt-2 text-sm text-gray-200/80">
-                              {getCategoryLabel(p.categoryId)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
                       {/* ACTIONS */}
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-white/10">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(p.id)}
-                              disabled={savingEdit}
-                              className="
-                                h-10 px-5 rounded-full
-                                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-                                text-black text-[11px] font-semibold uppercase tracking-[0.18em]
-                                hover:opacity-95 transition active:scale-[0.98]
-                                disabled:opacity-60 disabled:cursor-not-allowed
-                              "
-                            >
-                              {savingEdit ? "Saving…" : "Save"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="
-                                h-10 px-5 rounded-full border border-border bg-white/5
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                                hover:bg-white/10 transition active:scale-[0.98]
-                              "
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(p)}
-                              className="
-                                h-10 px-5 rounded-full border border-border bg-white/5
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
-                                hover:bg-white/10 transition active:scale-[0.98]
-                              "
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(p.id)}
-                              disabled={deletingId === p.id}
-                              className="
-                                h-10 px-5 rounded-full bg-red-600
-                                text-[11px] font-semibold uppercase tracking-[0.18em] text-white
-                                hover:bg-red-700 transition active:scale-[0.98]
-                                disabled:opacity-60 disabled:cursor-not-allowed
-                              "
-                            >
-                              {deletingId === p.id ? "Deleting…" : "Delete"}
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {canAdminEditCatalog && (
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-white/10">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEdit(p.id)}
+                                disabled={savingEdit}
+                                className="
+                                  h-10 px-5 rounded-full
+                                  bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                                  text-black text-[11px] font-semibold uppercase tracking-[0.18em]
+                                  hover:opacity-95 transition active:scale-[0.98]
+                                  disabled:opacity-60 disabled:cursor-not-allowed
+                                "
+                              >
+                                {savingEdit ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="
+                                  h-10 px-5 rounded-full border border-border bg-white/5
+                                  text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                                  hover:bg-white/10 transition active:scale-[0.98]
+                                "
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(p)}
+                                className="
+                                  h-10 px-5 rounded-full border border-border bg-white/5
+                                  text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
+                                  hover:bg-white/10 transition active:scale-[0.98]
+                                "
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(p.id)}
+                                disabled={deletingId === p.id}
+                                className="
+                                  h-10 px-5 rounded-full bg-red-600
+                                  text-[11px] font-semibold uppercase tracking-[0.18em] text-white
+                                  hover:bg-red-700 transition active:scale-[0.98]
+                                  disabled:opacity-60 disabled:cursor-not-allowed
+                                "
+                              >
+                                {deletingId === p.id ? "Deleting…" : "Delete"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

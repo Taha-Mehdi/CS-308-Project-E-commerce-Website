@@ -1,13 +1,17 @@
-// backend/src/routes/products.js
 const express = require("express");
 const { z } = require("zod");
 const { db } = require("../db");
-const { products } = require("../db/schema");
-const { eq, or, ilike, asc, desc } = require("drizzle-orm");
-const { authMiddleware, requireAdmin } = require("../middleware/auth");
+const { products, wishlistItems, users } = require("../db/schema");
+const { eq, or, ilike, asc, desc, inArray } = require("drizzle-orm");
+const {
+  authMiddleware,
+  requireAdmin,
+  requireSalesManagerOrAdmin,
+} = require("../middleware/auth");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { sendDiscountEmail } = require("../utils/email");
 
 const router = express.Router();
 
@@ -31,7 +35,6 @@ function parseCategoryId(raw) {
 const productBodySchema = z.object({
   name: z.string().min(1, "Product name is required"),
 
-  // Required fields.
   model: z.string().min(1, "Model is required"),
   serialNumber: z.string().min(1, "Serial number is required"),
   description: z.string().min(1, "Description is required"),
@@ -40,7 +43,6 @@ const productBodySchema = z.object({
   warrantyStatus: z.string().min(1, "Warranty status is required"),
   distributorInfo: z.string().min(1, "Distributor information is required"),
 
-  // Optional:
   isActive: z.boolean().optional().default(true),
   categoryId: z.number().int().optional().nullable(),
   cost: z.number().nonnegative("Cost must be >= 0").optional(),
@@ -61,36 +63,21 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// -----------------------------------------------------
-// GET /products  (search + sort)
-// -----------------------------------------------------
+// GET /products (search + sort)
 router.get("/", async (req, res) => {
   const { q, sortBy, sortOrder } = req.query;
 
   try {
     let query = db.select().from(products);
 
-    // search by name or description (case-insensitive)
     if (q && q.trim() !== "") {
       const term = `%${q.trim()}%`;
-      query = query.where(
-        or(ilike(products.name, term), ilike(products.description, term))
-      );
+      query = query.where(or(ilike(products.name, term), ilike(products.description, term)));
     }
 
-    // sorting
     if (sortBy === "price") {
-      query = query.orderBy(
-        sortOrder === "desc" ? desc(products.price) : asc(products.price)
-      );
-    } else if (sortBy === "popularity") {
-      query = query.orderBy(
-        sortOrder === "asc"
-          ? asc(products.popularity)
-          : desc(products.popularity)
-      );
+      query = query.orderBy(sortOrder === "desc" ? desc(products.price) : asc(products.price));
     } else {
-      // default — stable
       query = query.orderBy(asc(products.id));
     }
 
@@ -102,9 +89,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // GET /products/:id
-// -----------------------------------------------------
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -112,11 +97,7 @@ router.get("/:id", async (req, res) => {
   }
 
   try {
-    const [product] = await db
-      .select()
-      .from(products)
-      .where(eq(products.id, id));
-
+    const [product] = await db.select().from(products).where(eq(products.id, id));
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     return res.json(product);
@@ -126,9 +107,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // POST /products (admin)
-// -----------------------------------------------------
 router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const parsed = productBodySchema.safeParse({
@@ -145,9 +124,7 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
       isActive: parseIsActive(req.body.isActive),
       categoryId: parseCategoryId(req.body.categoryId),
       cost:
-        req.body.cost !== undefined &&
-        req.body.cost !== null &&
-        req.body.cost !== ""
+        req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
           ? Number(req.body.cost)
           : undefined,
     });
@@ -177,6 +154,9 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
         isActive: data.isActive,
         categoryId: data.categoryId ?? null,
         cost: data.cost ?? null,
+
+        originalPrice: null,
+        discountRate: null,
       })
       .returning();
 
@@ -187,9 +167,7 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // PUT /products/:id (admin)
-// -----------------------------------------------------
 router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -211,9 +189,7 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
       isActive: parseIsActive(req.body.isActive),
       categoryId: parseCategoryId(req.body.categoryId),
       cost:
-        req.body.cost !== undefined &&
-        req.body.cost !== null &&
-        req.body.cost !== ""
+        req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
           ? Number(req.body.cost)
           : undefined,
     });
@@ -258,9 +234,131 @@ router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
+// ------------------ DISCOUNTS ------------------
+// Frontend expects POST /products/discounts
+// body: { productIds: number[], discountRate: number } (0..100)
+// rate 0 clears discount and restores original
+const discountSchema = z.object({
+  productIds: z.array(z.coerce.number().int().positive()).min(1),
+  discountRate: z.coerce.number().min(0).max(100),
+});
+
+async function handleDiscount(req, res) {
+  try {
+    const parsed = discountSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+    }
+
+    const { productIds, discountRate } = parsed.data;
+
+    const updatedProducts = await db.transaction(async (tx) => {
+      const rows = await tx.select().from(products).where(inArray(products.id, productIds));
+      if (rows.length !== productIds.length) {
+        throw new Error("One or more products not found");
+      }
+
+      const out = [];
+
+      for (const p of rows) {
+        const currentPrice = Number(p.price);
+        const baseOriginal =
+          p.originalPrice !== null && p.originalPrice !== undefined
+            ? Number(p.originalPrice)
+            : currentPrice;
+
+        if (discountRate <= 0) {
+          const restoredPrice =
+            p.originalPrice !== null && p.originalPrice !== undefined
+              ? Number(p.originalPrice)
+              : currentPrice;
+
+          const [upd] = await tx
+            .update(products)
+            .set({
+              price: restoredPrice.toFixed(2),
+              originalPrice: null,
+              discountRate: null,
+            })
+            .where(eq(products.id, p.id))
+            .returning();
+
+          out.push(upd);
+        } else {
+          const newPrice = +(baseOriginal * (1 - discountRate / 100)).toFixed(2);
+
+          const [upd] = await tx
+            .update(products)
+            .set({
+              originalPrice: p.originalPrice ?? baseOriginal.toFixed(2),
+              discountRate: discountRate.toFixed(2),
+              price: newPrice.toFixed(2),
+            })
+            .where(eq(products.id, p.id))
+            .returning();
+
+          out.push(upd);
+        }
+      }
+
+      return out;
+    });
+
+    // Notify wishlist users (only when applying a discount > 0)
+    if (discountRate > 0) {
+      try {
+        const wishRows = await db
+          .select()
+          .from(wishlistItems)
+          .where(inArray(wishlistItems.productId, productIds));
+
+        if (wishRows.length > 0) {
+          const byUser = new Map(); // userId -> Set(productId)
+          for (const w of wishRows) {
+            if (!byUser.has(w.userId)) byUser.set(w.userId, new Set());
+            byUser.get(w.userId).add(w.productId);
+          }
+
+          const userIds = Array.from(byUser.keys());
+          const userRows = await db.select().from(users).where(inArray(users.id, userIds));
+
+          const productMap = new Map(updatedProducts.map((p) => [p.id, p]));
+
+          for (const u of userRows) {
+            const pids = Array.from(byUser.get(u.id) || []);
+            const discounted = pids.map((pid) => productMap.get(pid)).filter(Boolean);
+
+            if (discounted.length > 0) {
+              await sendDiscountEmail(u.email, discounted, discountRate);
+            }
+          }
+        }
+      } catch (notifyErr) {
+        console.error("Discount notify error (ignored):", notifyErr);
+      }
+    }
+
+    return res.json({
+      message: discountRate > 0 ? "Discount applied" : "Discount removed",
+      discountRate,
+      updatedProducts,
+    });
+  } catch (err) {
+    console.error("Discount endpoint error:", err);
+    const msg = err?.message || "Server error";
+    if (msg === "One or more products not found") {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ✅ Correct endpoint expected by frontend
+router.post("/discounts", authMiddleware, requireSalesManagerOrAdmin, handleDiscount);
+// ✅ Keep old endpoint as alias (doesn’t hurt)
+router.post("/discount", authMiddleware, requireSalesManagerOrAdmin, handleDiscount);
+
 // DELETE /products/:id (admin)
-// -----------------------------------------------------
 router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -268,11 +366,7 @@ router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 
   try {
-    const [deleted] = await db
-      .delete(products)
-      .where(eq(products.id, id))
-      .returning();
-
+    const [deleted] = await db.delete(products).where(eq(products.id, id)).returning();
     if (!deleted) {
       return res.status(404).json({ message: "Product not found" });
     }
@@ -284,9 +378,7 @@ router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// -----------------------------------------------------
 // POST /products/:id/image (admin)
-// -----------------------------------------------------
 router.post(
   "/:id/image",
   authMiddleware,

@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import SiteLayout from "../../../components/SiteLayout";
 import DripLink from "../../../components/DripLink";
+import ActionButton from "../../../components/ActionButton";
 import { useAuth } from "../../../context/AuthContext";
-import { calculateAnalytics } from "../../../lib/analytics";
+import { getAnalyticsSummaryApi, getInvoicesRangeApi, downloadInvoicePdfBlob } from "../../../lib/api";
 
 // Recharts
 import {
@@ -19,8 +20,6 @@ import {
   Bar,
   Legend,
 } from "recharts";
-
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 function panelClass() {
   return "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
@@ -40,134 +39,133 @@ function metricCard(tint = "neutral") {
   return `${base} [background:radial-gradient(1200px_500px_at_15%_-20%,rgba(255,255,255,0.08),transparent_60%),rgba(0,0,0,0.22)]`;
 }
 
-function formatStatusLabel(status) {
-  switch (status) {
-    case "processing":
-      return "processing";
-    case "in_transit":
-      return "in-transit";
-    case "delivered":
-      return "delivered";
-    case "cancelled":
-      return "cancelled";
-    case "paid":
-      return "paid";
-    case "pending":
-      return "pending";
-    case "shipped":
-      return "shipped";
-    default:
-      return status || "unknown";
-  }
+// YYYY-MM-DD
+function fmtDateInput(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function AdminAnalyticsPage() {
   const { user, loadingUser } = useAuth();
 
-  const [orders, setOrders] = useState([]);
+  // Default: last 30 days
+  const defaultTo = useMemo(() => new Date(), []);
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d;
+  }, []);
+
+  const [from, setFrom] = useState(fmtDateInput(defaultFrom));
+  const [to, setTo] = useState(fmtDateInput(defaultTo));
+
+  const [summary, setSummary] = useState(null);
+  const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
   const [message, setMessage] = useState("");
 
-  async function safeJson(res) {
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("application/json")) return null;
+  async function loadAll() {
+    setLoading(true);
+    setMessage("");
+
     try {
-      return await res.json();
-    } catch {
-      return null;
+      const s = await getAnalyticsSummaryApi(from, to);
+      setSummary(s);
+
+      const inv = await getInvoicesRangeApi(from, to);
+      setInvoices(inv?.invoices || []);
+    } catch (err) {
+      console.error("Analytics load error:", err);
+      setSummary(null);
+      setInvoices([]);
+
+      if (err?.status === 401) setMessage("Please login to view analytics.");
+      else if (err?.status === 403)
+        setMessage("Only sales managers and admins can view analytics/invoices.");
+      else setMessage(err?.message || "Failed to load analytics.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  // FETCH ORDERS (Admin)
   useEffect(() => {
-    async function loadAnalytics() {
-      setLoading(true);
-      setMessage("");
-
-      try {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-        if (!token) {
-          setOrders([]);
-          setMessage("Please login as admin to view analytics.");
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`${apiBase}/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
-          const json = await safeJson(res);
-          setMessage(json?.message || "Failed to load analytics.");
-          setOrders([]);
-          setLoading(false);
-          return;
-        }
-
-        const data = await safeJson(res);
-        if (!Array.isArray(data)) {
-          setMessage("Analytics format invalid.");
-          setOrders([]);
-          setLoading(false);
-          return;
-        }
-
-        setOrders(data);
-      } catch (err) {
-        console.error("Analytics load error:", err);
-        setMessage("Failed to load analytics.");
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (!loadingUser && user?.roleId === 1) loadAnalytics();
-    else if (!loadingUser) setLoading(false);
+    if (!loadingUser && user) loadAll();
+    else if (!loadingUser && !user) setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingUser, user]);
 
-  // ---------------- DATA PROCESSING ----------------
-  const analytics = useMemo(() => calculateAnalytics(orders), [orders]);
+  const series = summary?.series || [];
 
-  // Build status chart data dynamically from whatever statuses exist
-  const statusChartData = useMemo(() => {
-    const entries = Object.entries(analytics.statusCounts || {});
-    if (entries.length === 0) return [];
-
-    const priorityOrder = [
-      "processing",
-      "in_transit",
-      "delivered",
-      "cancelled",
-      "paid",
-      "pending",
-      "shipped",
-    ];
-
-    const sortKey = (status) => {
-      const idx = priorityOrder.indexOf(status);
-      return idx === -1 ? 999 : idx;
-    };
-
-    const sorted = entries.sort(
-      ([aStatus], [bStatus]) => sortKey(aStatus) - sortKey(bStatus)
-    );
-
-    return sorted.map(([status, count]) => ({
-      statusLabel: formatStatusLabel(status),
-      rawStatus: status,
-      count: count || 0,
+  // Charts
+  const revenueCostChartData = useMemo(() => {
+    return series.map((p) => ({
+      date: p.date,
+      revenue: Number(p.revenue || 0),
+      cost: Number(p.cost || 0),
     }));
-  }, [analytics.statusCounts]);
+  }, [series]);
+
+  const profitChartData = useMemo(() => {
+    return series.map((p) => ({
+      date: p.date,
+      profit: Number(p.profit || 0),
+    }));
+  }, [series]);
+
+  async function handleOpenInvoice(orderId) {
+    try {
+      setInvoiceLoadingId(orderId);
+      setMessage("");
+
+      const blob = await downloadInvoicePdfBlob(orderId);
+      const url = URL.createObjectURL(blob);
+
+      // Open in new tab (print/save from browser PDF viewer)
+      window.open(url, "_blank", "noopener,noreferrer");
+
+      // We revoke later; browser may still need it, so delay a bit
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      console.error("Open invoice error:", err);
+      setMessage(err?.message || "Failed to open invoice PDF.");
+      window.alert(err?.message || "Failed to open invoice PDF.");
+    } finally {
+      setInvoiceLoadingId(null);
+    }
+  }
+
+  async function handleDownloadInvoice(orderId) {
+    try {
+      setInvoiceLoadingId(orderId);
+      setMessage("");
+
+      const blob = await downloadInvoicePdfBlob(orderId);
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice_${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download invoice error:", err);
+      setMessage(err?.message || "Failed to download invoice PDF.");
+      window.alert(err?.message || "Failed to download invoice PDF.");
+    } finally {
+      setInvoiceLoadingId(null);
+    }
+  }
 
   // -------- AUTH GATES --------
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-300/70">Checking admin access…</p>
+        <p className="text-sm text-gray-300/70">Checking access…</p>
       </SiteLayout>
     );
   }
@@ -178,13 +176,13 @@ export default function AdminAnalyticsPage() {
         <div className="space-y-6 py-6">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-              Admin
+              Management
             </p>
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-              Analytics dashboard
+              Analytics & invoices
             </h1>
             <p className="text-sm text-gray-300/70 max-w-md">
-              Please login as admin to view analytics.
+              Please login to view analytics and invoices.
             </p>
           </div>
 
@@ -212,34 +210,6 @@ export default function AdminAnalyticsPage() {
     );
   }
 
-  if (user.roleId !== 1) {
-    return (
-      <SiteLayout>
-        <div className="space-y-4 py-6">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-              Admin
-            </p>
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-              Analytics dashboard
-            </h1>
-            <p className="text-sm text-gray-300/70">
-              Your account does not have admin permissions.
-            </p>
-          </div>
-
-          <DripLink
-            href="/"
-            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-          >
-            Back to homepage
-          </DripLink>
-        </div>
-      </SiteLayout>
-    );
-  }
-
-  // ---------------- UI START ----------------
   return (
     <SiteLayout>
       <div className="space-y-6 py-6">
@@ -247,51 +217,109 @@ export default function AdminAnalyticsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-              Sneaks-up · Admin
+              Sneaks-up · Management
             </p>
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-              Analytics dashboard
+              Analytics & invoices
             </h1>
             <p className="text-sm text-gray-300/70 max-w-2xl">
-              A live visual view of store performance and order movement.
+              Select a date range to view invoices, revenue, cost, and profit/loss charts.
             </p>
           </div>
 
           <div className="flex items-center gap-4">
             <DripLink
-              href="/admin/orders"
-              className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-            >
-              Manage orders
-            </DripLink>
-            <DripLink
               href="/admin"
               className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
             >
-              Back to admin dashboard
+              Back to dashboard
             </DripLink>
           </div>
         </div>
 
-        {/* MESSAGE */}
-        {message && (
-          <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
-            {message}
+        {/* RANGE CONTROLS */}
+        <div className={panelClass()}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+                  From
+                </span>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="
+                    h-10 w-full rounded-full border border-white/10 bg-white/5
+                    px-4 text-[12px] text-gray-100
+                    focus:outline-none focus:ring-2 focus:ring-white/15
+                  "
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+                  To
+                </span>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="
+                    h-10 w-full rounded-full border border-white/10 bg-white/5
+                    px-4 text-[12px] text-gray-100
+                    focus:outline-none focus:ring-2 focus:ring-white/15
+                  "
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <ActionButton type="button" onClick={loadAll} disabled={loading}>
+                {loading ? "Loading…" : "Apply range"}
+              </ActionButton>
+            </div>
           </div>
-        )}
+
+          {message && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
+              {message}
+            </div>
+          )}
+        </div>
 
         {/* METRICS */}
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <div className={metricCard("green")}>
             <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Total revenue
+              Revenue
             </p>
             <p className="mt-2 text-2xl font-semibold text-white">
-              ${Number(analytics.totalRevenue || 0).toFixed(2)}
+              ${Number(summary?.revenue || 0).toFixed(2)}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-300/55">Non-cancelled</p>
+          </div>
+
+          <div className={metricCard("amber")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+              Cost
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              ${Number(summary?.cost || 0).toFixed(2)}
             </p>
             <p className="mt-1 text-[11px] text-gray-300/55">
-              Excludes cancelled orders
+              Uses product cost, fallback 50%
             </p>
+          </div>
+
+          <div className={metricCard(Number(summary?.profit || 0) >= 0 ? "blue" : "red")}>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
+              Profit / Loss
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              ${Number(summary?.profit || 0).toFixed(2)}
+            </p>
+            <p className="mt-1 text-[11px] text-gray-300/55">Revenue − Cost</p>
           </div>
 
           <div className={metricCard("neutral")}>
@@ -299,93 +327,23 @@ export default function AdminAnalyticsPage() {
               Orders
             </p>
             <p className="mt-2 text-2xl font-semibold text-white">
-              {Number(analytics.orderCount || 0)}
+              {Number(summary?.orderCount || 0)}
             </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">Total orders</p>
-          </div>
-
-          <div className={metricCard("blue")}>
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Avg order value
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-white">
-              ${Number(analytics.avgOrderValue || 0).toFixed(2)}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">
-              Based on all orders
-            </p>
-          </div>
-        </div>
-
-        {/* SECONDARY METRICS */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className={metricCard("neutral")}>
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Recent 7d revenue
-            </p>
-            <p className="mt-2 text-xl font-semibold text-white">
-              ${Number(analytics.recentRevenue || 0).toFixed(2)}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">
-              Sum of the last 7 days
-            </p>
-          </div>
-
-          <div className={metricCard("green")}>
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Completion rate
-            </p>
-            <p className="mt-2 text-xl font-semibold text-white">
-              {Number(analytics.completionRate || 0).toFixed(0)}%
-            </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">
-              Share of non-cancelled orders
-            </p>
-          </div>
-
-          <div className={metricCard("blue")}>
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Avg revenue/day
-            </p>
-            <p className="mt-2 text-xl font-semibold text-white">
-              ${Number(analytics.avgPerDay || 0).toFixed(2)}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">
-              Across revenue days
-            </p>
-          </div>
-
-          <div className={metricCard("amber")}>
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-              Top day
-            </p>
-            <p className="mt-2 text-lg font-semibold text-white">
-              {analytics.topDay?.date || "–"}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-300/55">
-              {analytics.topDay
-                ? `$${Number(analytics.topDay.revenue || 0).toFixed(2)}`
-                : "No revenue yet"}
-            </p>
+            <p className="mt-1 text-[11px] text-gray-300/55">In range</p>
           </div>
         </div>
 
         {/* CHARTS */}
         <div className="grid gap-4 lg:grid-cols-3">
-          {/* REVENUE LINE CHART */}
+          {/* PROFIT LINE */}
           <div className={`${panelClass()} lg:col-span-2`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold text-white">
-                  Revenue over time
-                </h2>
-                <p className="text-[11px] text-gray-300/55">
-                  Based on real backend order data
-                </p>
+                <h2 className="text-sm font-semibold text-white">Profit over time</h2>
+                <p className="text-[11px] text-gray-300/55">Daily profit (Revenue − Cost)</p>
               </div>
-
               <span className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border border-white/10 bg-white/5 text-gray-200/80">
-                {analytics.revenueByDay?.length || 0} points
+                {profitChartData.length} points
               </span>
             </div>
 
@@ -394,13 +352,13 @@ export default function AdminAnalyticsPage() {
                 <div className="flex items-center justify-center h-full text-xs text-gray-300/60">
                   Loading chart…
                 </div>
-              ) : !analytics.revenueByDay || analytics.revenueByDay.length === 0 ? (
+              ) : profitChartData.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-xs text-gray-300/60">
                   Not enough data yet.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analytics.revenueByDay}>
+                  <LineChart data={profitChartData}>
                     <CartesianGrid strokeDasharray="4 4" opacity={0.12} />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} tickMargin={8} />
                     <YAxis tick={{ fontSize: 10 }} tickMargin={4} width={52} />
@@ -412,11 +370,11 @@ export default function AdminAnalyticsPage() {
                         borderRadius: 12,
                         color: "white",
                       }}
-                      formatter={(val) => [`$${val}`, "Revenue"]}
+                      formatter={(val) => [`$${Number(val).toFixed(2)}`, "Profit"]}
                     />
                     <Line
                       type="monotone"
-                      dataKey="revenue"
+                      dataKey="profit"
                       stroke="rgba(255,255,255,0.95)"
                       strokeWidth={2}
                       dot={{ r: 3 }}
@@ -427,16 +385,12 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
 
-          {/* STATUS BAR CHART */}
+          {/* REVENUE vs COST BAR */}
           <div className={panelClass()}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold text-white">
-                  Orders by status
-                </h2>
-                <p className="text-[11px] text-gray-300/55">
-                  Distribution across pipeline
-                </p>
+                <h2 className="text-sm font-semibold text-white">Revenue vs cost</h2>
+                <p className="text-[11px] text-gray-300/55">Daily totals</p>
               </div>
             </div>
 
@@ -445,25 +399,16 @@ export default function AdminAnalyticsPage() {
                 <div className="flex items-center justify-center h-full text-xs text-gray-300/60">
                   Loading chart…
                 </div>
-              ) : statusChartData.length === 0 ? (
+              ) : revenueCostChartData.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-xs text-gray-300/60">
                   Not enough data yet.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statusChartData}>
+                  <BarChart data={revenueCostChartData}>
                     <CartesianGrid strokeDasharray="4 4" opacity={0.12} />
-                    <XAxis
-                      dataKey="statusLabel"
-                      tick={{ fontSize: 10 }}
-                      tickMargin={10}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      tickMargin={4}
-                      allowDecimals={false}
-                      width={40}
-                    />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickMargin={10} />
+                    <YAxis tick={{ fontSize: 10 }} tickMargin={4} width={52} />
                     <Tooltip
                       contentStyle={{
                         fontSize: 12,
@@ -472,13 +417,11 @@ export default function AdminAnalyticsPage() {
                         borderRadius: 12,
                         color: "white",
                       }}
+                      formatter={(val, name) => [`$${Number(val).toFixed(2)}`, name]}
                     />
                     <Legend wrapperStyle={{ fontSize: 10, color: "white" }} />
-                    <Bar
-                      dataKey="count"
-                      fill="rgba(255,255,255,0.9)"
-                      radius={[6, 6, 0, 0]}
-                    />
+                    <Bar dataKey="revenue" fill="rgba(255,255,255,0.9)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="cost" fill="rgba(255,255,255,0.45)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -486,17 +429,86 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
+        {/* INVOICES LIST */}
+        <div className={panelClass()}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Invoices in range</h2>
+              <p className="text-[11px] text-gray-300/55">
+                Open to print, or download to save as PDF.
+              </p>
+            </div>
+
+            <span className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border border-white/10 bg-white/5 text-gray-200/80">
+              {invoices.length} invoice{invoices.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {loading ? (
+              <p className="text-sm text-gray-300/70">Loading invoices…</p>
+            ) : invoices.length === 0 ? (
+              <p className="text-sm text-gray-300/70">
+                No invoices found in this date range.
+              </p>
+            ) : (
+              invoices.map((inv) => (
+                <div
+                  key={inv.orderId}
+                  className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-[22px] border border-white/10 bg-white/5 px-4 py-4"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">Invoice / Order #{inv.orderId}</p>
+                    <p className="text-[11px] text-gray-300/60">
+                      {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : "—"} ·{" "}
+                      ${Number(inv.total || 0).toFixed(2)}
+                    </p>
+                    <p className="text-[11px] text-gray-300/60">
+                      Customer:{" "}
+                      <span className="text-gray-100/90">
+                        {inv.customer?.fullName || `User #${inv.customer?.id || "?"}`}
+                      </span>
+                      {inv.customer?.email ? (
+                        <span className="text-gray-300/60"> · {inv.customer.email}</span>
+                      ) : null}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <ActionButton
+                      type="button"
+                      onClick={() => handleOpenInvoice(inv.orderId)}
+                      disabled={invoiceLoadingId === inv.orderId}
+                    >
+                      {invoiceLoadingId === inv.orderId ? "Preparing…" : "Open / Print"}
+                    </ActionButton>
+
+                    <ActionButton
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDownloadInvoice(inv.orderId)}
+                      disabled={invoiceLoadingId === inv.orderId}
+                    >
+                      Download
+                    </ActionButton>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* FOOTNOTE */}
         <div className="text-[11px] text-gray-300/55">
-          Analytics are computed from{" "}
+          Data sources:{" "}
           <code className="px-1 py-0.5 bg-white/5 border border-white/10 rounded text-[10px]">
-            /orders
+            /analytics/summary
           </code>{" "}
-          (admin route). Update statuses in{" "}
-          <DripLink href="/admin/orders" className="underline underline-offset-4">
-            Admin → Orders
-          </DripLink>{" "}
-          to see charts react.
+          and{" "}
+          <code className="px-1 py-0.5 bg-white/5 border border-white/10 rounded text-[10px]">
+            /invoice?from&to
+          </code>
+          .
         </div>
       </div>
     </SiteLayout>

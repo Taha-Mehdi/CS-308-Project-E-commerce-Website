@@ -29,6 +29,13 @@
       "when": 1765328429664,
       "tag": "0003_typical_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1766663141472,
+      "tag": "0004_deep_sister_grimm",
+      "breakpoints": true
     }
   ]
 }

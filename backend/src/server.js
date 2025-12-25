@@ -16,12 +16,11 @@ const orderRoutes = require("./routes/orders");
 const cartRoutes = require("./routes/cart");
 const { router: invoiceRoutes } = require("./routes/invoice");
 const reviewsRoutes = require("./routes/reviews");
+const analyticsRoutes = require("./routes/analytics");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// If you ever run behind a proxy (Render/Heroku/Nginx), rate-limit needs this.
-// Safe locally too.
 app.set("trust proxy", 1);
 
 // Serve uploaded product images
@@ -31,33 +30,30 @@ app.use("/uploads", express.static(uploadDir));
 // Global middlewares
 app.use(helmet());
 
-// CORS: keep it open if you want, but this version is safer for dev.
-// If you use cookies, you must set credentials: true and specify origin explicitly.
 app.use(
   cors({
-    origin: true, // reflects request origin
+    origin: true,
     credentials: true,
   })
 );
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ Rate limiter
-// - In development: disabled (so React dev / HMR won’t trigger 429)
-// - In production: enabled
+// ✅ Rate limiter in production
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // adjust as needed
-    standardHeaders: true, // adds RateLimit-* headers
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Too many requests, please try again later." },
-    // Optional: ignore localhost/internal traffic if needed
-    // skip: (req) => req.ip === "127.0.0.1" || req.ip === "::1",
   });
 
-  // Apply only to API routes (not uploads/health) to reduce accidental blocks
-  app.use(["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews"], limiter);
+  app.use(
+    ["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews", "/analytics"],
+    limiter
+  );
 }
 
 // Health check routes
@@ -90,6 +86,7 @@ app.use("/orders", orderRoutes);
 app.use("/cart", cartRoutes);
 app.use("/invoice", invoiceRoutes);
 app.use("/reviews", reviewsRoutes);
+app.use("/analytics", analyticsRoutes);
 
 // Seed default roles on startup
 async function ensureDefaultRoles() {
@@ -111,12 +108,17 @@ async function ensureDefaultRoles() {
   }
 }
 
+// Basic 404 handler
+app.use((req, res) => {
+  return res.status(404).json({ message: "Route not found" });
+});
+
 // Create HTTP server and attach Socket.io
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*", // ok for testing
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
@@ -152,7 +154,6 @@ supportNamespace.on("connection", (socket) => {
     supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
   }
 
-  // Admin joins a chat room
   if (role === "admin") {
     socket.on("admin_join_chat", ({ chatId }) => {
       if (!chatId) return;
@@ -162,7 +163,6 @@ supportNamespace.on("connection", (socket) => {
     });
   }
 
-  // Customer sends a message
   socket.on("customer_message", ({ chatId, message }) => {
     if (!chatId || !message) return;
 
@@ -176,7 +176,6 @@ supportNamespace.on("connection", (socket) => {
     supportNamespace.to(chatId).emit("message", payload);
   });
 
-  // Admin sends a message
   socket.on("admin_message", ({ chatId, message }) => {
     if (!chatId || !message) return;
 
@@ -198,14 +197,12 @@ supportNamespace.on("connection", (socket) => {
 
       if (activeChats.has(possibleChatId)) {
         activeChats.delete(possibleChatId);
-
         supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
       }
     }
   });
 });
 
-// Start server with Socket.io attached
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   ensureDefaultRoles();

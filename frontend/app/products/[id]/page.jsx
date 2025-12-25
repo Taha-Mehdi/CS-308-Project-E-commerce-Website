@@ -5,7 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import SiteLayout from "../../../components/SiteLayout";
 import DripLink from "../../../components/DripLink";
 import { useAuth } from "../../../context/AuthContext";
-import { addToCartApi } from "../../../lib/api";
+import {
+  addToCartApi,
+  addToWishlistApi,
+  removeFromWishlistApi,
+  getWishlistApi,
+} from "../../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -58,7 +63,11 @@ function Stars({ value = 0, size = "text-sm" }) {
       {Array.from({ length: 5 }).map((_, i) => (
         <span
           key={i}
-          className={[i < full ? "text-white" : "text-white/20", size, "leading-none"].join(" ")}
+          className={[
+            i < full ? "text-white" : "text-white/20",
+            size,
+            "leading-none",
+          ].join(" ")}
         >
           ★
         </span>
@@ -137,6 +146,10 @@ export default function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState("story"); // story | specs | reviews
   const topRef = useRef(null);
 
+  // ---- Wishlist (NEW)
+  const [wishlistIds, setWishlistIds] = useState(() => new Set());
+  const [wishToggling, setWishToggling] = useState(false);
+
   const scrollToTabs = useCallback(() => {
     if (!topRef.current) return;
     topRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -154,7 +167,10 @@ export default function ProductDetailPage() {
       setMessage("");
 
       try {
-        const res = await fetch(`${apiBase}/products/${productId}`, { signal, cache: "no-store" });
+        const res = await fetch(`${apiBase}/products/${productId}`, {
+          signal,
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error("not found");
         const data = await res.json();
         if (!signal.aborted) setProduct(data);
@@ -190,6 +206,38 @@ export default function ProductDetailPage() {
 
     return () => controller.abort();
   }, [productId]);
+
+  // Load wishlist (NEW)
+  useEffect(() => {
+    let alive = true;
+
+    async function loadWishlist() {
+      if (!user) {
+        if (alive) setWishlistIds(new Set());
+        return;
+      }
+      try {
+        const data = await getWishlistApi();
+        const ids = new Set(
+          Array.isArray(data)
+            ? data
+                .map((x) => (typeof x === "number" ? x : Number(x?.productId)))
+                .filter((n) => Number.isInteger(n) && n > 0)
+            : []
+        );
+        if (alive) setWishlistIds(ids);
+      } catch (err) {
+        // backend may not exist yet; keep UI stable
+        console.warn("Wishlist load failed (ok if not implemented):", err?.message || err);
+        if (alive) setWishlistIds(new Set());
+      }
+    }
+
+    loadWishlist();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   const imageUrl =
     product?.imageUrl && !String(product.imageUrl).startsWith("http")
@@ -309,6 +357,49 @@ export default function ProductDetailPage() {
       setMessageType("error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Wishlist toggle (NEW)
+  async function toggleWishlist() {
+    if (!product?.id) return;
+
+    if (!user) {
+      setMessage("Please log in to use wishlist.");
+      setMessageType("error");
+      return;
+    }
+
+    const productIdNum = Number(product.id);
+    const currentlyWished = wishlistIds.has(productIdNum);
+
+    setWishToggling(true);
+
+    // optimistic
+    setWishlistIds((prev) => {
+      const next = new Set(prev);
+      if (currentlyWished) next.delete(productIdNum);
+      else next.add(productIdNum);
+      return next;
+    });
+
+    try {
+      if (currentlyWished) await removeFromWishlistApi(productIdNum);
+      else await addToWishlistApi(productIdNum);
+      setMessage(currentlyWished ? "Removed from wishlist." : "Added to wishlist.");
+      setMessageType("success");
+    } catch (err) {
+      // revert
+      setWishlistIds((prev) => {
+        const next = new Set(prev);
+        if (currentlyWished) next.add(productIdNum);
+        else next.delete(productIdNum);
+        return next;
+      });
+      setMessage("Wishlist action failed (endpoint may not be implemented yet).");
+      setMessageType("error");
+    } finally {
+      setWishToggling(false);
     }
   }
 
@@ -512,6 +603,27 @@ export default function ProductDetailPage() {
                       <div className="rounded-full px-4 py-2 border border-white/10 bg-black/25 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
                         {soldOut ? "sold out" : `${Math.max(0, stock)} in stock`}
                       </div>
+                    </div>
+
+                    {/* Wishlist button (NEW) */}
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleWishlist}
+                        disabled={wishToggling}
+                        className={[
+                          "h-10 px-5 rounded-full border border-white/10 bg-white/[0.06] backdrop-blur",
+                          "text-[11px] font-semibold uppercase tracking-[0.18em] transition",
+                          "hover:bg-white/[0.10] active:scale-[0.98]",
+                          "disabled:opacity-60 disabled:cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        {wishlistIds.has(Number(product.id)) ? "♥ Wishlisted" : "♡ Wishlist"}
+                      </button>
+
+                      <span className="text-[11px] text-gray-300/60">
+                        {user ? "Saved to your account" : "Login required"}
+                      </span>
                     </div>
 
                     <div className="mt-5 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />

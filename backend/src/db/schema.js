@@ -7,10 +7,8 @@ const {
   timestamp,
   numeric,
   varchar,
-  uniqueIndex, // <--- 1. ADDED THIS
+  uniqueIndex,
 } = require("drizzle-orm/pg-core");
-
-// ... (Roles, Categories, Users, Products, Orders, OrderItems remain the same) ...
 
 // ROLES
 const roles = pgTable("roles", {
@@ -45,8 +43,19 @@ const products = pgTable("products", {
   serialNumber: text("serial_number").unique(),
   description: text("description"),
   stock: integer("stock").notNull().default(0),
+
+  // price shown to customers (current sale price)
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+
+  // product manager can specify; otherwise used as fallback 50% of sale price for profit/loss
   cost: numeric("cost", { precision: 10, scale: 2 }),
+
+  // Discount support:
+  // - originalPrice: the pre-discount price we can restore to when discount removed
+  // - discountRate: percentage (0..100), nullable means "no discount"
+  originalPrice: numeric("original_price", { precision: 10, scale: 2 }),
+  discountRate: numeric("discount_rate", { precision: 5, scale: 2 }),
+
   warrantyStatus: text("warranty_status"),
   distributorInfo: text("distributor_info"),
   categoryId: integer("category_id").references(() => categories.id),
@@ -74,23 +83,39 @@ const orderItems = pgTable("order_items", {
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
 });
 
-// 2. FIXED CART ITEMS
-const cartItems = pgTable("cart_items", {
-  id: serial("id").primaryKey(),
+// CART ITEMS
+const cartItems = pgTable(
+  "cart_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    productId: integer("product_id").notNull().references(() => products.id),
+    quantity: integer("quantity").notNull().default(1),
+  },
+  (table) => ({
+    uniqueUserProduct: uniqueIndex("unique_user_product_cart").on(
+      table.userId,
+      table.productId
+    ),
+  })
+);
 
-  userId: integer("user_id")
-      .notNull()
-      .references(() => users.id),
-
-  productId: integer("product_id")
-      .notNull()
-      .references(() => products.id),
-
-  quantity: integer("quantity").notNull().default(1),
-}, (table) => ({ // <--- ADDED COMMA HERE
-                 // This ensures a user can't have the same product ID twice in the cart table.
-  uniqueUserProduct: uniqueIndex('unique_user_product_cart').on(table.userId, table.productId),
-}));
+// WISHLIST ITEMS 
+const wishlistItems = pgTable(
+  "wishlist_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    productId: integer("product_id").notNull().references(() => products.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueUserProduct: uniqueIndex("unique_user_product_wishlist").on(
+      table.userId,
+      table.productId
+    ),
+  })
+);
 
 // REVIEWS
 const reviews = pgTable("reviews", {
@@ -111,5 +136,6 @@ module.exports = {
   orders,
   orderItems,
   cartItems,
+  wishlistItems,
   reviews,
 };
