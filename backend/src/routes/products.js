@@ -7,6 +7,7 @@ const {
   authMiddleware,
   requireAdmin,
   requireSalesManagerOrAdmin,
+  requireProductManagerOrAdmin,
 } = require("../middleware/auth");
 const multer = require("multer");
 const path = require("path");
@@ -107,8 +108,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST /products (admin)
-router.post("/", authMiddleware, requireAdmin, async (req, res) => {
+// POST /products (admin OR product manager)
+router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const parsed = productBodySchema.safeParse({
       name: req.body.name,
@@ -167,8 +168,8 @@ router.post("/", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /products/:id (admin)
-router.put("/:id", authMiddleware, requireAdmin, async (req, res) => {
+// PUT /products/:id (admin OR product manager)
+router.put("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ message: "Invalid product ID" });
@@ -243,6 +244,10 @@ const discountSchema = z.object({
   discountRate: z.coerce.number().min(0).max(100),
 });
 
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 async function handleDiscount(req, res) {
   try {
     const parsed = discountSchema.safeParse(req.body);
@@ -262,12 +267,15 @@ async function handleDiscount(req, res) {
 
       for (const p of rows) {
         const currentPrice = Number(p.price);
+
+        // "baseOriginal" is the stable pre-discount price
         const baseOriginal =
           p.originalPrice !== null && p.originalPrice !== undefined
             ? Number(p.originalPrice)
             : currentPrice;
 
         if (discountRate <= 0) {
+          // restore
           const restoredPrice =
             p.originalPrice !== null && p.originalPrice !== undefined
               ? Number(p.originalPrice)
@@ -276,7 +284,7 @@ async function handleDiscount(req, res) {
           const [upd] = await tx
             .update(products)
             .set({
-              price: restoredPrice.toFixed(2),
+              price: round2(restoredPrice),
               originalPrice: null,
               discountRate: null,
             })
@@ -285,14 +293,15 @@ async function handleDiscount(req, res) {
 
           out.push(upd);
         } else {
-          const newPrice = +(baseOriginal * (1 - discountRate / 100)).toFixed(2);
+          const newPrice = round2(baseOriginal * (1 - discountRate / 100));
+          const rate2 = round2(discountRate);
 
           const [upd] = await tx
             .update(products)
             .set({
-              originalPrice: p.originalPrice ?? baseOriginal.toFixed(2),
-              discountRate: discountRate.toFixed(2),
-              price: newPrice.toFixed(2),
+              originalPrice: p.originalPrice ?? baseOriginal, // store numeric, not string
+              discountRate: rate2,
+              price: newPrice,
             })
             .where(eq(products.id, p.id))
             .returning();
@@ -329,7 +338,7 @@ async function handleDiscount(req, res) {
             const discounted = pids.map((pid) => productMap.get(pid)).filter(Boolean);
 
             if (discounted.length > 0) {
-              await sendDiscountEmail(u.email, discounted, discountRate);
+              await sendDiscountEmail(u.email, discounted, round2(discountRate));
             }
           }
         }
@@ -340,7 +349,7 @@ async function handleDiscount(req, res) {
 
     return res.json({
       message: discountRate > 0 ? "Discount applied" : "Discount removed",
-      discountRate,
+      discountRate: round2(discountRate),
       updatedProducts,
     });
   } catch (err) {

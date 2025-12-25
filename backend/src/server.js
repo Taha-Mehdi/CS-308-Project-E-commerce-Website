@@ -16,6 +16,7 @@ const orderRoutes = require("./routes/orders");
 const cartRoutes = require("./routes/cart");
 const { router: invoiceRoutes } = require("./routes/invoice");
 const reviewsRoutes = require("./routes/reviews");
+const wishlistRoutes = require("./routes/wishlist");
 const analyticsRoutes = require("./routes/analytics");
 
 const app = express();
@@ -38,9 +39,8 @@ app.use(
 );
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// ✅ Rate limiter in production
+// Rate limiter only in production
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -51,7 +51,7 @@ if (process.env.NODE_ENV === "production") {
   });
 
   app.use(
-    ["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews", "/analytics"],
+    ["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews", "/wishlist", "/analytics"],
     limiter
   );
 }
@@ -86,6 +86,7 @@ app.use("/orders", orderRoutes);
 app.use("/cart", cartRoutes);
 app.use("/invoice", invoiceRoutes);
 app.use("/reviews", reviewsRoutes);
+app.use("/wishlist", wishlistRoutes);
 app.use("/analytics", analyticsRoutes);
 
 // Seed default roles on startup
@@ -108,11 +109,6 @@ async function ensureDefaultRoles() {
   }
 }
 
-// Basic 404 handler
-app.use((req, res) => {
-  return res.status(404).json({ message: "Route not found" });
-});
-
 // Create HTTP server and attach Socket.io
 const server = http.createServer(app);
 
@@ -124,7 +120,7 @@ const io = new Server(server, {
 });
 
 // In-memory support chat state
-const activeChats = new Map(); // chatId -> { chatId, customerName, createdAt }
+const activeChats = new Map();
 const supportNamespace = io.of("/support");
 
 supportNamespace.on("connection", (socket) => {
@@ -150,14 +146,12 @@ supportNamespace.on("connection", (socket) => {
     activeChats.set(chatId, chatInfo);
 
     socket.emit("chat_joined", chatInfo);
-
     supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
   }
 
   if (role === "admin") {
     socket.on("admin_join_chat", ({ chatId }) => {
       if (!chatId) return;
-      console.log(`[support] admin ${socket.id} joined chat ${chatId}`);
       socket.join(chatId);
       socket.emit("joined_chat", { chatId });
     });
@@ -165,36 +159,28 @@ supportNamespace.on("connection", (socket) => {
 
   socket.on("customer_message", ({ chatId, message }) => {
     if (!chatId || !message) return;
-
-    const payload = {
+    supportNamespace.to(chatId).emit("message", {
       chatId,
       from: "customer",
       message,
       at: new Date().toISOString(),
-    };
-
-    supportNamespace.to(chatId).emit("message", payload);
+    });
   });
 
   socket.on("admin_message", ({ chatId, message }) => {
     if (!chatId || !message) return;
-
-    const payload = {
+    supportNamespace.to(chatId).emit("message", {
       chatId,
       from: "admin",
       message,
       at: new Date().toISOString(),
-    };
-
-    supportNamespace.to(chatId).emit("message", payload);
+    });
   });
 
   socket.on("disconnect", () => {
     console.log(`[support] socket disconnected: ${socket.id} (role=${role})`);
-
     if (role !== "admin") {
       const possibleChatId = socket.handshake.query.chatId || socket.id;
-
       if (activeChats.has(possibleChatId)) {
         activeChats.delete(possibleChatId);
         supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));

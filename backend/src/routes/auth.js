@@ -1,11 +1,11 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { z } = require('zod');
-const { db } = require('../db');
-const { users, roles } = require('../db/schema');
-const { eq } = require('drizzle-orm');
-const { authMiddleware } = require('../middleware/auth');
+const express = require("express");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { z } = require("zod");
+const { db } = require("../db");
+const { users, roles } = require("../db/schema");
+const { eq } = require("drizzle-orm");
+const { authMiddleware } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -21,54 +21,68 @@ const loginSchema = z.object({
 });
 
 // ─────────────────────────────────────────────
-// Helper: create access & refresh tokens
+// Helper: get roleName for a user row
 // ─────────────────────────────────────────────
-function createAccessToken(user) {
+async function getRoleNameById(roleId) {
+  const rid = Number(roleId);
+  if (!Number.isInteger(rid)) return null;
+  const roleRows = await db.select().from(roles).where(eq(roles.id, rid));
+  return roleRows.length ? roleRows[0].name : null;
+}
+
+// ─────────────────────────────────────────────
+// Helper: create access & refresh tokens
+// Now includes roleName (stable) in JWT payload
+// ─────────────────────────────────────────────
+function createAccessToken(user, roleName) {
   return jwt.sign(
     {
       id: user.id,
       email: user.email,
       roleId: user.roleId,
-      type: 'access',
+      roleName: roleName || null,
+      type: "access",
     },
     process.env.JWT_SECRET,
-    { expiresIn: '1d' } // short-ish life
+    { expiresIn: "1d" }
   );
 }
 
-function createRefreshToken(user) {
+function createRefreshToken(user, roleName) {
   return jwt.sign(
     {
       id: user.id,
       email: user.email,
       roleId: user.roleId,
-      type: 'refresh',
+      roleName: roleName || null,
+      type: "refresh",
     },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' } // longer life
+    { expiresIn: "7d" }
   );
 }
 
 // normalize user object for response
-function publicUser(user) {
+function publicUser(user, roleName) {
   return {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
     roleId: user.roleId,
+    roleName: roleName || null,
   };
 }
 
 // ─────────────────────────────────────────────
 // POST /auth/register
 // ─────────────────────────────────────────────
-router.post('/register', async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
-      console.error('Register validation error:', parsed.error.flatten());
+      console.error("Register validation error:", parsed.error.flatten());
       return res.status(400).json({
-        message: 'Invalid data',
+        message: "Invalid data",
         errors: parsed.error.flatten(),
       });
     }
@@ -78,13 +92,13 @@ router.post('/register', async (req, res) => {
     // Check if user exists
     const existing = await db.select().from(users).where(eq(users.email, email));
     if (existing.length > 0) {
-      return res.status(409).json({ message: 'Email already registered' });
+      return res.status(409).json({ message: "Email already registered" });
     }
 
     // Get customer role
-    const roleRows = await db.select().from(roles).where(eq(roles.name, 'customer'));
+    const roleRows = await db.select().from(roles).where(eq(roles.name, "customer"));
     if (roleRows.length === 0) {
-      return res.status(500).json({ message: 'Default role not configured' });
+      return res.status(500).json({ message: "Default role not configured" });
     }
     const customerRole = roleRows[0];
 
@@ -101,30 +115,31 @@ router.post('/register', async (req, res) => {
       .returning();
 
     const user = inserted[0];
+    const roleName = await getRoleNameById(user.roleId);
 
-    const token = createAccessToken(user);
-    const refreshToken = createRefreshToken(user);
+    const token = createAccessToken(user, roleName);
+    const refreshToken = createRefreshToken(user, roleName);
 
     return res.status(201).json({
       token,
       refreshToken,
-      user: publicUser(user),
+      user: publicUser(user, roleName),
     });
   } catch (err) {
-    console.error('Register error:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error("Register error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
 // ─────────────────────────────────────────────
 // POST /auth/login
 // ─────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
-        message: 'Invalid data',
+        message: "Invalid data",
         errors: parsed.error.flatten(),
       });
     }
@@ -133,93 +148,100 @@ router.post('/login', async (req, res) => {
 
     const found = await db.select().from(users).where(eq(users.email, email));
     if (found.length === 0) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const user = found[0];
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const token = createAccessToken(user);
-    const refreshToken = createRefreshToken(user);
+    const roleName = await getRoleNameById(user.roleId);
+
+    const token = createAccessToken(user, roleName);
+    const refreshToken = createRefreshToken(user, roleName);
 
     return res.json({
       token,
       refreshToken,
-      user: publicUser(user),
+      user: publicUser(user, roleName),
     });
   } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error("Login error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
 // ─────────────────────────────────────────────
 // POST /auth/refresh   (body: { refreshToken })
 // ─────────────────────────────────────────────
-router.post('/refresh', async (req, res) => {
+router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body || {};
 
   if (!refreshToken) {
-    return res.status(400).json({ message: 'Refresh token is required' });
+    return res.status(400).json({ message: "Refresh token is required" });
   }
 
   try {
     const payload = jwt.verify(refreshToken, process.env.JWT_SECRET);
 
-    if (!payload || payload.type !== 'refresh') {
-      return res.status(401).json({ message: 'Invalid refresh token' });
+    if (!payload || payload.type !== "refresh") {
+      return res.status(401).json({ message: "Invalid refresh token" });
     }
 
     // Ensure user still exists + get latest data
     const found = await db.select().from(users).where(eq(users.id, payload.id));
     if (found.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const user = found[0];
+    const roleName = await getRoleNameById(user.roleId);
 
     // issue new tokens
-    const newAccessToken = createAccessToken(user);
-    const newRefreshToken = createRefreshToken(user);
+    const newAccessToken = createAccessToken(user, roleName);
+    const newRefreshToken = createRefreshToken(user, roleName);
 
     return res.json({
       token: newAccessToken,
       refreshToken: newRefreshToken,
-      user: publicUser(user),
+      user: publicUser(user, roleName),
     });
   } catch (err) {
-    console.error('Refresh token error:', err);
+    console.error("Refresh token error:", err);
 
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ message: 'Refresh token expired' });
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Refresh token expired" });
     }
 
-    return res.status(401).json({ message: 'Invalid refresh token' });
+    return res.status(401).json({ message: "Invalid refresh token" });
   }
 });
 
 // ─────────────────────────────────────────────
 // GET /auth/me (requires Authorization: Bearer <token>)
 // ─────────────────────────────────────────────
-router.get('/me', authMiddleware, async (req, res) => {
+router.get("/me", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
 
     const found = await db.select().from(users).where(eq(users.id, userId));
     if (found.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const user = found[0];
 
-    return res.json(publicUser(user));
+    // Prefer roleName already in token (fast), but verify from DB if missing
+    let roleName = req.user.roleName || null;
+    if (!roleName) roleName = await getRoleNameById(user.roleId);
+
+    return res.json(publicUser(user, roleName));
   } catch (err) {
-    console.error('Me error:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error("Me error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

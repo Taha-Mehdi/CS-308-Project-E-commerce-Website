@@ -7,7 +7,6 @@ function getBearerToken(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader || typeof authHeader !== "string") return null;
 
-  // Accept: "Bearer <token>" with any extra whitespace
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
 
@@ -19,25 +18,21 @@ function authMiddleware(req, res, next) {
   const token = getBearerToken(req);
 
   if (!token) {
-    return res
-      .status(401)
-      .json({ message: "Missing or invalid Authorization header" });
+    return res.status(401).json({ message: "Missing or invalid Authorization header" });
   }
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    // payload: { id, email, roleId, type: 'access' }
-    req.user = payload;
+
+    // IMPORTANT: only allow access tokens here
+    if (!payload || payload.type !== "access") {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    req.user = payload; // { id, email, roleId, roleName?, type:'access' }
     return next();
   } catch (err) {
     if (err && err.name === "TokenExpiredError") {
-      console.warn(
-        "JWT expired for request:",
-        req.method,
-        req.originalUrl,
-        "expiredAt:",
-        err.expiredAt
-      );
       return res.status(401).json({ message: "Token expired" });
     }
 
@@ -57,34 +52,37 @@ function optionalAuthMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Only accept access tokens for optional auth as well
+    if (!payload || payload.type !== "access") {
+      req.user = null;
+      return next();
+    }
+
     req.user = payload;
     return next();
-  } catch (err) {
-    // Treat invalid/expired token as guest
+  } catch {
     req.user = null;
     return next();
   }
 }
 
-// Role lookup with a small in-memory cache (performance + safety)
-// 
+// Role lookup with small in-memory cache
 const roleCache = new Map(); // roleId -> { name, expiresAtMs }
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function getRoleNameById(roleId) {
-  if (!Number.isInteger(roleId)) return null;
+  const rid = Number(roleId);
+  if (!Number.isInteger(rid)) return null;
 
-  const cached = roleCache.get(roleId);
+  const cached = roleCache.get(rid);
   const now = Date.now();
+  if (cached && cached.expiresAtMs > now) return cached.name;
 
-  if (cached && cached.expiresAtMs > now) {
-    return cached.name;
-  }
-
-  const rows = await db.select().from(roles).where(eq(roles.id, roleId));
+  const rows = await db.select().from(roles).where(eq(roles.id, rid));
   const name = rows.length ? rows[0].name : null;
 
-  roleCache.set(roleId, { name, expiresAtMs: now + ROLE_CACHE_TTL_MS });
+  roleCache.set(rid, { name, expiresAtMs: now + ROLE_CACHE_TTL_MS });
   return name;
 }
 
@@ -97,8 +95,12 @@ function requireRoleNames(allowedRoleNames) {
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const roleId = Number(req.user.roleId);
-      const roleName = await getRoleNameById(roleId);
+      // Prefer roleName from JWT if present, else fetch by roleId
+      let roleName = req.user.roleName;
+      if (!roleName) {
+        const roleId = Number(req.user.roleId);
+        roleName = await getRoleNameById(roleId);
+      }
 
       if (!roleName) {
         return res.status(403).json({ message: "Role not recognized" });
@@ -108,7 +110,7 @@ function requireRoleNames(allowedRoleNames) {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Attach roleName for downstream handlers if useful
+      // attach for downstream usage
       req.user.roleName = roleName;
 
       return next();
@@ -119,17 +121,9 @@ function requireRoleNames(allowedRoleNames) {
   };
 }
 
-// Updated: no longer assumes roleId === 1
 const requireAdmin = requireRoleNames(["admin"]);
-
-// New: sales manager OR admin (for discounts, invoices, analytics)
 const requireSalesManagerOrAdmin = requireRoleNames(["admin", "sales_manager"]);
-
-// New: product manager OR admin (for cost field control, etc.)
-const requireProductManagerOrAdmin = requireRoleNames([
-  "admin",
-  "product_manager",
-]);
+const requireProductManagerOrAdmin = requireRoleNames(["admin", "product_manager"]);
 
 module.exports = {
   authMiddleware,

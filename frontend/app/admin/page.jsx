@@ -8,12 +8,14 @@ import { useAuth } from "../../context/AuthContext";
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 function metricCardTint(kind) {
-  // subtle tints for premium look
   const base =
     "rounded-[28px] border border-border bg-black/25 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.45)]";
-  if (kind === "orders") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,255,255,0.10),transparent_60%),rgba(0,0,0,0.25)]`;
-  if (kind === "revenue") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(80,200,255,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
-  if (kind === "catalog") return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,110,199,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
+  if (kind === "orders")
+    return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,255,255,0.10),transparent_60%),rgba(0,0,0,0.25)]`;
+  if (kind === "revenue")
+    return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(80,200,255,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
+  if (kind === "catalog")
+    return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(255,110,199,0.12),transparent_60%),rgba(0,0,0,0.25)]`;
   return `${base} [background:radial-gradient(1200px_500px_at_20%_-20%,rgba(132,255,99,0.10),transparent_60%),rgba(0,0,0,0.25)]`;
 }
 
@@ -28,6 +30,11 @@ function statusPill(label, tone = "neutral") {
   if (tone === "blue") return `${base} border-sky-500/25 bg-sky-500/10 text-sky-200`;
   if (tone === "pink") return `${base} border-pink-500/25 bg-pink-500/10 text-pink-200`;
   return `${base} border-white/10 bg-white/5 text-gray-200/80`;
+}
+
+function isAdminPanelRole(user) {
+  const rn = user?.roleName;
+  return rn === "admin" || rn === "product_manager";
 }
 
 export default function AdminDashboardPage() {
@@ -48,7 +55,6 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Load admin data
   async function loadDashboard() {
     setLoading(true);
     setMessage("");
@@ -61,41 +67,33 @@ export default function AdminDashboardPage() {
     if (!token) {
       setOrders([]);
       setProducts([]);
-      setMessage("Please log in as an admin to view the dashboard.");
+      setMessage("Please log in to view the dashboard.");
       setLoading(false);
       return;
     }
 
     try {
-      // Admin orders: GET /orders (admin only)
+      // Orders endpoint is admin-only on backend.
       const ordersRes = await fetch(`${apiBase}/orders`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       let ordersData = [];
       if (ordersRes.ok) {
         const json = await safeJson(ordersRes);
-        if (Array.isArray(json)) {
-          ordersData = json;
-        }
+        if (Array.isArray(json)) ordersData = json;
       } else if (ordersRes.status === 403) {
-        setMessage("You do not have admin permissions.");
+        setMessage("You do not have admin permissions to view orders.");
       }
-
       setOrders(ordersData);
 
-      // Products: GET /products
+      // Products are public
       const productsRes = await fetch(`${apiBase}/products`);
       let productsData = [];
       if (productsRes.ok) {
         const json = await safeJson(productsRes);
-        if (Array.isArray(json)) {
-          productsData = json;
-        }
+        if (Array.isArray(json)) productsData = json;
       }
-
       setProducts(productsData);
     } catch (err) {
       console.error("Admin dashboard load error:", err);
@@ -108,14 +106,14 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
-    if (!loadingUser && user && user.roleId === 1) {
+    if (!loadingUser && user && isAdminPanelRole(user)) {
       loadDashboard();
-    } else if (!loadingUser && (!user || user.roleId !== 1)) {
+    } else if (!loadingUser) {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingUser, user]);
 
-  // Derived metrics
   const stats = useMemo(() => {
     const totalOrders = orders.length;
 
@@ -129,15 +127,8 @@ export default function AdminDashboardPage() {
     const deliveredOrders = orders.filter((o) => o.status === "delivered").length;
 
     const totalProducts = products.length;
-    const lowStockProducts = products.filter((p) => {
-      if (typeof p.stock !== "number") return false;
-      return p.stock > 0 && p.stock <= 5;
-    }).length;
-
-    const outOfStock = products.filter((p) => {
-      if (typeof p.stock !== "number") return false;
-      return p.stock === 0;
-    }).length;
+    const lowStockProducts = products.filter((p) => typeof p.stock === "number" && p.stock > 0 && p.stock <= 5).length;
+    const outOfStock = products.filter((p) => typeof p.stock === "number" && p.stock === 0).length;
 
     return {
       totalOrders,
@@ -151,16 +142,14 @@ export default function AdminDashboardPage() {
     };
   }, [orders, products]);
 
-  // Loading state while checking auth
   if (loadingUser) {
     return (
       <SiteLayout>
-        <p className="text-sm text-gray-300/70">Checking admin access…</p>
+        <p className="text-sm text-gray-300/70">Checking access…</p>
       </SiteLayout>
     );
   }
 
-  // Not logged in
   if (!user) {
     return (
       <SiteLayout>
@@ -173,7 +162,7 @@ export default function AdminDashboardPage() {
               Control room
             </h1>
             <p className="text-sm text-gray-300/70 max-w-md">
-              You need to be logged in as an admin to access the SNEAKS-UP control center.
+              You need to be logged in to access this area.
             </p>
           </div>
 
@@ -205,8 +194,8 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // Logged in but not admin
-  if (user.roleId !== 1) {
+  if (!isAdminPanelRole(user)) {
+    const isSales = user?.roleName === "sales_manager";
     return (
       <SiteLayout>
         <div className="space-y-4 py-6">
@@ -215,12 +204,21 @@ export default function AdminDashboardPage() {
               Admin
             </p>
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-              Control room
+              Access denied
             </h1>
             <p className="text-sm text-gray-300/70">
-              Your account does not have admin permissions.
+              This panel is for admins and product managers.
             </p>
           </div>
+
+          {isSales && (
+            <DripLink
+              href="/sales-admin"
+              className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+            >
+              Go to Sales Manager panel →
+            </DripLink>
+          )}
 
           <DripLink
             href="/"
@@ -236,7 +234,6 @@ export default function AdminDashboardPage() {
   return (
     <SiteLayout>
       <div className="space-y-8 py-6">
-        {/* HEADER */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
@@ -277,7 +274,6 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* METRICS */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className={metricCardTint("orders")}>
             <div className="flex items-center justify-between">
@@ -340,7 +336,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* NAV CARDS */}
         <div className="grid gap-4 md:grid-cols-3">
           <DripLink
             href="/admin/products"
@@ -365,7 +360,7 @@ export default function AdminDashboardPage() {
               </span>
             </div>
             <p className="mt-3 text-[11px] text-gray-300/60">
-              Edit drops, adjust stock, and upload sneaker imagery for the next release.
+              Edit drops, adjust stock, and upload sneaker imagery.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
               Open <span className="opacity-70 group-hover:opacity-100">→</span>
@@ -395,7 +390,7 @@ export default function AdminDashboardPage() {
               </span>
             </div>
             <p className="mt-3 text-[11px] text-gray-300/60">
-              Review order flow, update statuses, and watch drops move through the pipeline.
+              Review order flow and update statuses.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
               Open <span className="opacity-70 group-hover:opacity-100">→</span>
@@ -423,72 +418,13 @@ export default function AdminDashboardPage() {
               <span className={statusPill("Live", "pink")}>Live</span>
             </div>
             <p className="mt-3 text-[11px] text-gray-300/60">
-              Visualize revenue, order volume, and product performance over time.
+              Visualize revenue, order volume, and product performance.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100/90">
               Open <span className="opacity-70 group-hover:opacity-100">→</span>
             </div>
           </DripLink>
         </div>
-
-        {/* LATEST ACTIVITY */}
-        {!loading && orders.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-300/60">
-                  Latest
-                </p>
-                <p className="text-sm font-semibold text-white">Activity</p>
-              </div>
-
-              <DripLink
-                href="/admin/orders"
-                className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-              >
-                View all admin orders
-              </DripLink>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {orders
-                .slice()
-                .sort(
-                  (a, b) =>
-                    new Date(b.createdAt).getTime() -
-                    new Date(a.createdAt).getTime()
-                )
-                .slice(0, 4)
-                .map((o) => (
-                  <div
-                    key={o.id}
-                    className="
-                      rounded-[24px] border border-border bg-black/20 backdrop-blur
-                      p-4 flex items-center justify-between gap-4
-                    "
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white">
-                        Order #{o.id}
-                      </p>
-                      <p className="text-[11px] text-gray-300/60 truncate">
-                        {o.createdAt ? new Date(o.createdAt).toLocaleString() : "Unknown"}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        ${Number(o.total || 0).toFixed(2)}
-                      </p>
-                      <p className="text-[11px] text-gray-300/60">
-                        {String(o.status || "unknown").replaceAll("_", " ")}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
       </div>
     </SiteLayout>
   );

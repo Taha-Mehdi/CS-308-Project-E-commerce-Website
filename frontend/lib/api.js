@@ -1,3 +1,5 @@
+// frontend/lib/api.js
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -121,7 +123,9 @@ export async function apiRequest(
       throw retryError;
     } catch (refreshError) {
       clearStoredTokens();
-      const error = new Error(refreshError.message || "Failed to refresh session");
+      const error = new Error(
+        refreshError.message || "Failed to refresh session"
+      );
       error.status = 401;
       throw error;
     }
@@ -256,7 +260,7 @@ export async function createOrderApi(items) {
   });
 }
 
-// Analytics / Invoices (NEW)
+// Analytics / Invoices
 export async function getAnalyticsSummaryApi(from, to) {
   const params = new URLSearchParams({ from, to });
   return apiRequest(`/analytics/summary?${params.toString()}`, {
@@ -290,26 +294,46 @@ export async function addProductReviewApi(id, data) {
   });
 }
 
-// --- WISHLIST ---
+// --- WISHLIST (UPDATED to match backend: POST/DELETE /wishlist with body) ---
+
+// Backend returns: { items: [...], products: [...] }
+// We keep frontend stable by returning a Set-like list of productIds usage
 export async function getWishlistApi() {
-  return apiRequest("/wishlist", { method: "GET", auth: true });
+  const data = await apiRequest("/wishlist", { method: "GET", auth: true });
+
+  // If backend returns { items, products }
+  if (data && Array.isArray(data.items)) return data.items;
+
+  // If backend returns plain array (fallback)
+  if (Array.isArray(data)) return data;
+
+  return [];
 }
 
+// POST /wishlist  body: { productId }
 export async function addToWishlistApi(productId) {
-  return apiRequest(`/wishlist/${productId}`, { method: "POST", auth: true });
+  return apiRequest("/wishlist", {
+    method: "POST",
+    auth: true,
+    body: { productId },
+  });
 }
 
+// DELETE /wishlist  body: { productId }
 export async function removeFromWishlistApi(productId) {
-  return apiRequest(`/wishlist/${productId}`, { method: "DELETE", auth: true });
+  return apiRequest("/wishlist", {
+    method: "DELETE",
+    auth: true,
+    body: { productId },
+  });
 }
 
 // --- DISCOUNTS ---
-// Backend endpoint:
-//   POST /products/discount
-// Body: { productIds: number[], discountRate: number }  // e.g. 15 for 15%
-// Send 0 to clear discount (restore originalPrice)
+// Backend supports BOTH:
+//   POST /products/discounts  (preferred)
+//   POST /products/discount   (alias)
 export async function applyDiscountApi({ productIds, discountRate }) {
-  return apiRequest("/products/discount", {
+  return apiRequest("/products/discounts", {
     method: "POST",
     auth: true,
     body: { productIds, discountRate },

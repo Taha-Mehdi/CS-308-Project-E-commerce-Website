@@ -1,8 +1,8 @@
 const express = require("express");
 const { db } = require("../db");
-const { orders, orderItems, products, roles } = require("../db/schema");
-const { eq, and, gte, lte, inArray, sql } = require("drizzle-orm");
-const { authMiddleware } = require("../middleware/auth");
+const { orders, orderItems, products } = require("../db/schema");
+const { and, gte, lte, inArray, sql } = require("drizzle-orm");
+const { authMiddleware, requireSalesManagerOrAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -13,27 +13,9 @@ function parseDateParam(raw) {
   return d;
 }
 
-async function getRoleNameById(roleId) {
-  const rid = Number(roleId);
-  if (!Number.isInteger(rid)) return null;
-  const roleRows = await db.select().from(roles).where(eq(roles.id, rid));
-  return roleRows.length ? roleRows[0].name : null;
-}
-
-function requireSalesManagerOrAdminRoleName(roleName) {
-  return roleName === "admin" || roleName === "sales_manager";
-}
-
 // GET /analytics/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get("/summary", authMiddleware, async (req, res) => {
+router.get("/summary", authMiddleware, requireSalesManagerOrAdmin, async (req, res) => {
   try {
-    const roleName = await getRoleNameById(req.user.roleId);
-    if (!requireSalesManagerOrAdminRoleName(roleName)) {
-      return res
-        .status(403)
-        .json({ message: "Sales manager or admin access required" });
-    }
-
     const from = parseDateParam(req.query.from);
     const to = parseDateParam(req.query.to);
 
@@ -113,6 +95,7 @@ router.get("/summary", authMiddleware, async (req, res) => {
       const unitPrice = Number(it.unitPrice || 0);
       const p = pmap.get(it.productId);
 
+      // Cost = explicit product.cost if provided, else 50% of sale price (unitPrice)
       const unitCost =
         p && p.cost !== null && p.cost !== undefined ? Number(p.cost) : unitPrice * 0.5;
 

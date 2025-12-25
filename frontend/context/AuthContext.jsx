@@ -24,8 +24,12 @@ export function AuthProvider({ children }) {
       if (storedToken && storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
-          setToken(storedToken);
-          setUser(parsedUser);
+
+          // ✅ Ensure shape is object; roleName may be missing from old sessions (ok)
+          if (parsedUser && typeof parsedUser === "object") {
+            setToken(storedToken);
+            setUser(parsedUser);
+          }
         } catch (err) {
           console.warn("Failed to parse stored user:", err);
         }
@@ -89,11 +93,12 @@ export function AuthProvider({ children }) {
     }
 
     try {
+      // ✅ Expect backend to provide roleName now
+      // But if someone logs in before migration, still allow.
       setToken(newToken);
       setUser(newUser);
 
       if (typeof window !== "undefined") {
-        // token is also stored by api.js, but we keep this for compatibility
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
         mergeGuestCartIntoServer();
@@ -113,7 +118,6 @@ export function AuthProvider({ children }) {
         localStorage.removeItem("user");
       }
 
-      // Also clear access + refresh token via api.js helper
       clearStoredTokens();
     } catch (err) {
       console.error("AuthContext.logout error:", err);
@@ -128,9 +132,7 @@ export function AuthProvider({ children }) {
     logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
