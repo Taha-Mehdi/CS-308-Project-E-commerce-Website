@@ -105,7 +105,6 @@ app.use("/analytics", analyticsRoutes);
 async function ensureDefaultRoles() {
   const query = `
     INSERT INTO roles (name) VALUES
-      ('admin'),
       ('customer'),
       ('support'),
       ('sales_manager'),
