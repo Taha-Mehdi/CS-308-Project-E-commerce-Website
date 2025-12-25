@@ -14,7 +14,10 @@ const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
 const orderRoutes = require("./routes/orders");
 const cartRoutes = require("./routes/cart");
-const { router: invoiceRoutes } = require("./routes/invoice");
+
+// ✅ FIX: invoiceRoutes must be a Router function
+const invoiceRoutes = require("./routes/invoice");
+
 const reviewsRoutes = require("./routes/reviews");
 const wishlistRoutes = require("./routes/wishlist");
 const analyticsRoutes = require("./routes/analytics");
@@ -51,7 +54,16 @@ if (process.env.NODE_ENV === "production") {
   });
 
   app.use(
-    ["/auth", "/products", "/orders", "/cart", "/invoice", "/reviews", "/wishlist", "/analytics"],
+    [
+      "/auth",
+      "/products",
+      "/orders",
+      "/cart",
+      "/invoice",
+      "/reviews",
+      "/wishlist",
+      "/analytics",
+    ],
     limiter
   );
 }
@@ -146,7 +158,9 @@ supportNamespace.on("connection", (socket) => {
     activeChats.set(chatId, chatInfo);
 
     socket.emit("chat_joined", chatInfo);
-    supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
+    supportNamespace
+      .to("admins")
+      .emit("active_chats", Array.from(activeChats.values()));
   }
 
   if (role === "admin") {
@@ -183,7 +197,9 @@ supportNamespace.on("connection", (socket) => {
       const possibleChatId = socket.handshake.query.chatId || socket.id;
       if (activeChats.has(possibleChatId)) {
         activeChats.delete(possibleChatId);
-        supportNamespace.to("admins").emit("active_chats", Array.from(activeChats.values()));
+        supportNamespace
+          .to("admins")
+          .emit("active_chats", Array.from(activeChats.values()));
       }
     }
   });
