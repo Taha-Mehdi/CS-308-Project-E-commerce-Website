@@ -106,7 +106,7 @@ function requireAnyRole(roleNames) {
   };
 }
 
-const requireAdmin = requireRole("admin");
+const requireAdmin = requireRole("product_manager");
 const requireSalesManager = requireRole("sales_manager");
 const requireProductManager = requireRole("product_manager");
 const requireProductManagerOrAdmin = requireAnyRole(["product_manager", "admin"]);
