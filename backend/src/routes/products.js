@@ -125,9 +125,9 @@ router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) 
       isActive: parseIsActive(req.body.isActive),
       categoryId: parseCategoryId(req.body.categoryId),
       cost:
-        req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
-          ? Number(req.body.cost)
-          : undefined,
+          req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
+              ? Number(req.body.cost)
+              : undefined,
     });
 
     if (!parsed.success) {
@@ -140,26 +140,26 @@ router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) 
     const data = parsed.data;
 
     const [created] = await db
-      .insert(products)
-      .values({
-        name: data.name,
-        model: data.model,
-        serialNumber: data.serialNumber,
-        description: data.description,
+        .insert(products)
+        .values({
+          name: data.name,
+          model: data.model,
+          serialNumber: data.serialNumber,
+          description: data.description,
 
-        stock: data.stock,
-        price: data.price,
-        warrantyStatus: data.warrantyStatus,
-        distributorInfo: data.distributorInfo,
+          stock: data.stock,
+          price: data.price,
+          warrantyStatus: data.warrantyStatus,
+          distributorInfo: data.distributorInfo,
 
-        isActive: data.isActive,
-        categoryId: data.categoryId ?? null,
-        cost: data.cost ?? null,
+          isActive: data.isActive,
+          categoryId: data.categoryId ?? null,
+          cost: data.cost ?? null,
 
-        originalPrice: null,
-        discountRate: null,
-      })
-      .returning();
+          originalPrice: null,
+          discountRate: null,
+        })
+        .returning();
 
     return res.status(201).json(created);
   } catch (err) {
@@ -168,8 +168,17 @@ router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) 
   }
 });
 
-// PUT /products/:id (admin OR product manager)
-router.put("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
+// PUT /products/:id (admin OR product manager OR sales manager)
+// ✅ UPDATED: Added manual role check to include 'sales_manager'
+router.put("/:id", authMiddleware, async (req, res, next) => {
+  const role = req.user?.roleName;
+  const allowed = ["admin", "product_manager", "sales_manager"];
+
+  if (allowed.includes(role)) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied" });
+}, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ message: "Invalid product ID" });
@@ -190,9 +199,9 @@ router.put("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res
       isActive: parseIsActive(req.body.isActive),
       categoryId: parseCategoryId(req.body.categoryId),
       cost:
-        req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
-          ? Number(req.body.cost)
-          : undefined,
+          req.body.cost !== undefined && req.body.cost !== null && req.body.cost !== ""
+              ? Number(req.body.cost)
+              : undefined,
     });
 
     if (!parsed.success) {
@@ -205,24 +214,24 @@ router.put("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res
     const data = parsed.data;
 
     const [updated] = await db
-      .update(products)
-      .set({
-        name: data.name,
-        model: data.model,
-        serialNumber: data.serialNumber,
-        description: data.description,
+        .update(products)
+        .set({
+          name: data.name,
+          model: data.model,
+          serialNumber: data.serialNumber,
+          description: data.description,
 
-        stock: data.stock,
-        price: data.price,
-        warrantyStatus: data.warrantyStatus,
-        distributorInfo: data.distributorInfo,
+          stock: data.stock,
+          price: data.price,
+          warrantyStatus: data.warrantyStatus,
+          distributorInfo: data.distributorInfo,
 
-        isActive: data.isActive,
-        categoryId: data.categoryId ?? null,
-        cost: data.cost ?? null,
-      })
-      .where(eq(products.id, id))
-      .returning();
+          isActive: data.isActive,
+          categoryId: data.categoryId ?? null,
+          cost: data.cost ?? null,
+        })
+        .where(eq(products.id, id))
+        .returning();
 
     if (!updated) {
       return res.status(404).json({ message: "Product not found" });
@@ -270,26 +279,26 @@ async function handleDiscount(req, res) {
 
         // "baseOriginal" is the stable pre-discount price
         const baseOriginal =
-          p.originalPrice !== null && p.originalPrice !== undefined
-            ? Number(p.originalPrice)
-            : currentPrice;
+            p.originalPrice !== null && p.originalPrice !== undefined
+                ? Number(p.originalPrice)
+                : currentPrice;
 
         if (discountRate <= 0) {
           // restore
           const restoredPrice =
-            p.originalPrice !== null && p.originalPrice !== undefined
-              ? Number(p.originalPrice)
-              : currentPrice;
+              p.originalPrice !== null && p.originalPrice !== undefined
+                  ? Number(p.originalPrice)
+                  : currentPrice;
 
           const [upd] = await tx
-            .update(products)
-            .set({
-              price: round2(restoredPrice),
-              originalPrice: null,
-              discountRate: null,
-            })
-            .where(eq(products.id, p.id))
-            .returning();
+              .update(products)
+              .set({
+                price: round2(restoredPrice),
+                originalPrice: null,
+                discountRate: null,
+              })
+              .where(eq(products.id, p.id))
+              .returning();
 
           out.push(upd);
         } else {
@@ -297,14 +306,14 @@ async function handleDiscount(req, res) {
           const rate2 = round2(discountRate);
 
           const [upd] = await tx
-            .update(products)
-            .set({
-              originalPrice: p.originalPrice ?? baseOriginal,
-              discountRate: rate2,
-              price: newPrice,
-            })
-            .where(eq(products.id, p.id))
-            .returning();
+              .update(products)
+              .set({
+                originalPrice: p.originalPrice ?? baseOriginal,
+                discountRate: rate2,
+                price: newPrice,
+              })
+              .where(eq(products.id, p.id))
+              .returning();
 
           out.push(upd);
         }
@@ -317,9 +326,9 @@ async function handleDiscount(req, res) {
     if (discountRate > 0) {
       try {
         const wishRows = await db
-          .select()
-          .from(wishlistItems)
-          .where(inArray(wishlistItems.productId, productIds));
+            .select()
+            .from(wishlistItems)
+            .where(inArray(wishlistItems.productId, productIds));
 
         if (wishRows.length > 0) {
           const byUser = new Map(); // userId -> Set(productId)
@@ -367,8 +376,9 @@ router.post("/discounts", authMiddleware, requireSalesManager, handleDiscount);
 // ✅ Keep old endpoint as alias
 router.post("/discount", authMiddleware, requireSalesManager, handleDiscount);
 
-// DELETE /products/:id (admin)
-router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
+// DELETE /products/:id (admin OR product_manager)
+// ✅ UPDATED: Changed to allow product manager
+router.delete("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ message: "Invalid product ID" });
@@ -387,44 +397,45 @@ router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// POST /products/:id/image (admin)
+// POST /products/:id/image (admin OR product_manager)
+// ✅ UPDATED: Changed to allow product manager
 router.post(
-  "/:id/image",
-  authMiddleware,
-  requireAdmin,
-  upload.single("image"),
-  async (req, res) => {
-    const productId = Number(req.params.id);
-    if (!Number.isInteger(productId)) {
-      return res.status(400).json({ message: "Invalid product ID" });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ message: "Image file is required" });
-    }
-
-    const imageUrl = `/uploads/${req.file.filename}`;
-
-    try {
-      const [updated] = await db
-        .update(products)
-        .set({ imageUrl })
-        .where(eq(products.id, productId))
-        .returning();
-
-      if (!updated) {
-        return res.status(404).json({ message: "Product not found" });
+    "/:id/image",
+    authMiddleware,
+    requireProductManagerOrAdmin,
+    upload.single("image"),
+    async (req, res) => {
+      const productId = Number(req.params.id);
+      if (!Number.isInteger(productId)) {
+        return res.status(400).json({ message: "Invalid product ID" });
       }
 
-      return res.json({
-        message: "Image uploaded successfully",
-        product: updated,
-      });
-    } catch (err) {
-      console.error("Upload product image error:", err);
-      return res.status(500).json({ message: "Failed to upload image" });
+      if (!req.file) {
+        return res.status(400).json({ message: "Image file is required" });
+      }
+
+      const imageUrl = `/uploads/${req.file.filename}`;
+
+      try {
+        const [updated] = await db
+            .update(products)
+            .set({ imageUrl })
+            .where(eq(products.id, productId))
+            .returning();
+
+        if (!updated) {
+          return res.status(404).json({ message: "Product not found" });
+        }
+
+        return res.json({
+          message: "Image uploaded successfully",
+          product: updated,
+        });
+      } catch (err) {
+        console.error("Upload product image error:", err);
+        return res.status(500).json({ message: "Failed to upload image" });
+      }
     }
-  }
 );
 
 module.exports = router;
