@@ -14,11 +14,11 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 /* Lighter admin glass surface (no navbar wrapper) */
 function panelClass() {
-  return "rounded-[28px] border border-border bg-white/[0.04] backdrop-blur-xl p-5 shadow-[0_16px_60px_rgba(0,0,0,0.35)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] backdrop-blur-xl p-5 shadow-[0_16px_60px_rgba(0,0,0,0.35)]";
 }
 
 function chipBase() {
-  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+  return "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border whitespace-nowrap";
 }
 function chip(tone = "muted") {
   const base = chipBase();
@@ -50,13 +50,13 @@ function handleAuthRedirect(err, nextPath) {
 
 /* Unified compact button + select sizing */
 const actionBtn =
-  "h-9 px-4 rounded-full border border-border bg-white/5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10 transition active:scale-[0.98]";
+    "h-9 px-4 rounded-full border border-white/10 bg-white/5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-100 hover:bg-white/10 transition active:scale-[0.98]";
 
 const primaryBtn =
-  "h-9 px-4 rounded-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] text-black text-[10px] font-semibold uppercase tracking-[0.18em] hover:opacity-95 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed";
+    "h-9 px-4 rounded-full bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)] text-black text-[10px] font-semibold uppercase tracking-[0.18em] hover:opacity-95 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed";
 
 const selectStyle =
-  "h-9 rounded-full border border-white/10 bg-white/5 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)] disabled:opacity-60 disabled:cursor-not-allowed";
+    "h-9 rounded-full border border-white/10 bg-white/5 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_35%,transparent)] disabled:opacity-60 disabled:cursor-not-allowed";
 
 export default function AdminOrdersPage() {
   const { user, loadingUser } = useAuth();
@@ -158,13 +158,13 @@ export default function AdminOrdersPage() {
 
     try {
       const updated = await apiRequest(`/orders/${orderId}/status`, {
-        method: "PUT",
+        method: "PATCH",
         auth: true,
         body: { status },
       });
 
       setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
+          prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
       );
       setMessage("Status updated.");
     } catch (err) {
@@ -199,210 +199,239 @@ export default function AdminOrdersPage() {
     }
   }
 
-  /* ------- UI wrappers (navbar removed) ------- */
+  /* ------- UI wrappers ------- */
   const PageShell = ({ children }) => (
-    <div className="min-h-screen text-white">
-      <div className="mx-auto max-w-6xl px-4 py-8">{children}</div>
-    </div>
+      <div className="min-h-screen text-white">
+        <div className="mx-auto max-w-6xl px-4 py-8">{children}</div>
+      </div>
   );
 
   if (loadingUser) {
     return (
-      <PageShell>
-        <p className="text-sm text-gray-300/70">Checking access…</p>
-      </PageShell>
+        <PageShell>
+          <p className="text-sm text-gray-300/70">Checking access…</p>
+        </PageShell>
     );
   }
 
   if (!user || !isAdminPanelRole(user)) {
     return (
-      <PageShell>
-        <div className="space-y-4">
-          <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-            Admin
-          </p>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-            Access denied
-          </h1>
-          <p className="text-sm text-gray-300/70">
-            You need admin or product manager permissions to manage orders.
-          </p>
-          <DripLink
-            href="/"
-            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-          >
-            Back to homepage
-          </DripLink>
-        </div>
-      </PageShell>
+        <PageShell>
+          <div className="space-y-4">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Admin
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Access denied
+            </h1>
+            <p className="text-sm text-gray-300/70">
+              You need admin or product manager permissions to manage orders.
+            </p>
+            <DripLink
+                href="/"
+                className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+            >
+              Back to homepage
+            </DripLink>
+          </div>
+        </PageShell>
     );
   }
 
   return (
-    <PageShell>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-              Sneaks-up · Admin
-            </p>
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-              Orders
-            </h1>
+      <PageShell>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+                Sneaks-up · Admin
+              </p>
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+                Delivery Management
+              </h1>
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              <span className={chip("muted")}>{stats.total} total</span>
-              <span className={chip("muted")}>{stats.processing} processing</span>
-              <span className={chip("muted")}>{stats.inTransit} in-transit</span>
-              <span className={chip("muted")}>{stats.delivered} delivered</span>
-              <span className={chip(stats.cancelled ? "warn" : "muted")}>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <span className={chip("muted")}>{stats.total} total</span>
+                <span className={chip("muted")}>{stats.processing} processing</span>
+                <span className={chip("muted")}>{stats.inTransit} in-transit</span>
+                <span className={chip("muted")}>{stats.delivered} delivered</span>
+                <span className={chip(stats.cancelled ? "warn" : "muted")}>
                 {stats.cancelled} cancelled
               </span>
+              </div>
             </div>
+
+            <DripLink
+                href="/admin"
+                className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+            >
+              Back to dashboard
+            </DripLink>
           </div>
 
-          <DripLink
-            href="/admin"
-            className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-          >
-            Back to dashboard
-          </DripLink>
-        </div>
+          {message && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur px-4 py-3 text-[11px] text-gray-200/80">
+                {message}
+              </div>
+          )}
 
-        {message && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur px-4 py-3 text-[11px] text-gray-200/80">
-            {message}
-          </div>
-        )}
+          {loading ? (
+              <div className={panelClass()}>
+                <p className="text-sm text-gray-300/70">Loading deliveries…</p>
+              </div>
+          ) : sortedOrders.length === 0 ? (
+              <div className={panelClass()}>
+                <p className="text-sm text-gray-300/70">No orders found.</p>
+              </div>
+          ) : (
+              <div className="space-y-4">
+                {sortedOrders.map((o) => {
+                  const orderId = o.id;
+                  const expanded = expandedId === orderId;
+                  const items = detailsById[orderId] || [];
 
-        {loading ? (
-          <div className={panelClass()}>
-            <p className="text-sm text-gray-300/70">Loading orders…</p>
-          </div>
-        ) : sortedOrders.length === 0 ? (
-          <div className={panelClass()}>
-            <p className="text-sm text-gray-300/70">No orders found.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {sortedOrders.map((o) => {
-              const orderId = o.id;
-              const expanded = expandedId === orderId;
-              const items = detailsById[orderId] || [];
+                  return (
+                      <div key={orderId} className={panelClass()}>
+                        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                          {/* LEFT: Delivery Info */}
+                          <div className="space-y-3 flex-1 min-w-0">
+                            <div className="flex items-center gap-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                                Delivery #{orderId}
+                              </p>
+                              <span className={chip(o.status === "delivered" ? "ok" : "warn")}>
+                          {o.status}
+                        </span>
+                            </div>
 
-              return (
-                <div key={orderId} className={panelClass()}>
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                        Order #{orderId}
-                      </p>
-                      <p className="text-[11px] text-gray-300/60">
-                        Created:{" "}
-                        {o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}
-                      </p>
-                      <p className="text-[11px] text-gray-300/60">
-                        Status: {o.status || "—"}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleExpand(orderId)}
-                        className={actionBtn}
-                      >
-                        {expanded ? "Hide items" : "View items"}
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={invoiceLoadingId === orderId}
-                        onClick={() => handleDownloadInvoice(orderId)}
-                        className={primaryBtn}
-                      >
-                        {invoiceLoadingId === orderId ? "Saving…" : "Invoice PDF"}
-                      </button>
-
-                      <select
-                        disabled={statusUpdatingId === orderId}
-                        value={o.status || "processing"}
-                        onChange={(e) => handleUpdateStatus(orderId, e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="processing">processing</option>
-                        <option value="in_transit">in-transit</option>
-                        <option value="delivered">delivered</option>
-                        <option value="cancelled">cancelled</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {expanded && (
-                    <div className="mt-5 border-t border-white/10 pt-4 space-y-3">
-                      <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
-                        Items
-                      </p>
-
-                      {items.length === 0 ? (
-                        <p className="text-sm text-gray-300/70">Loading items…</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {items.map((item) => {
-                            const p = productsMap.get(item.productId);
-                            const unitPrice = Number(item.unitPrice || 0);
-                            const lineTotal = unitPrice * (item.quantity || 0);
-
-                            let imageUrl = p?.imageUrl || null;
-                            if (imageUrl && !imageUrl.startsWith("http")) {
-                              imageUrl = `${apiBase}${imageUrl}`;
-                            }
-
-                            return (
-                              <div
-                                key={item.id}
-                                className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-white/5 px-3 py-3"
-                              >
-                                <div className="w-14 h-14 rounded-2xl bg-black/20 border border-white/10 overflow-hidden flex items-center justify-center">
-                                  {imageUrl ? (
-                                    <img
-                                      src={imageUrl}
-                                      alt={p?.name || `Product #${item.productId}`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <span className="text-[9px] uppercase tracking-[0.18em] text-gray-300/50">
-                                      Sneaks
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-white truncate">
-                                    {p ? p.name : `Product #${item.productId}`}
-                                  </p>
-                                  <p className="text-[11px] text-gray-300/60">
-                                    Qty: {item.quantity} · ${unitPrice.toFixed(2)} each
-                                  </p>
-                                </div>
-
-                                <div className="text-sm font-semibold text-white">
-                                  ${lineTotal.toFixed(2)}
-                                </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-[12px] text-gray-400">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] uppercase tracking-wider opacity-60">Customer ID</span>
+                                <span className="text-white font-mono">{o.userId}</span>
                               </div>
-                            );
-                          })}
+                              <div className="flex flex-col">
+                                <span className="text-[10px] uppercase tracking-wider opacity-60">Total Amount</span>
+                                <span className="text-white font-medium">${Number(o.total || 0).toFixed(2)}</span>
+                              </div>
+                              <div className="flex flex-col sm:col-span-2 mt-1">
+                                <span className="text-[10px] uppercase tracking-wider opacity-60">Delivery Address</span>
+                                <span className="text-white leading-relaxed">
+                              {o.shippingAddress || o.address || "No address provided"}
+                            </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* RIGHT: Actions */}
+                          <div className="flex flex-col items-end gap-3 shrink-0">
+                            <select
+                                disabled={statusUpdatingId === orderId}
+                                value={o.status || "processing"}
+                                onChange={(e) => handleUpdateStatus(orderId, e.target.value)}
+                                className={selectStyle + " w-full md:w-40"}
+                            >
+                              <option value="processing">Processing</option>
+                              <option value="in_transit">In Transit</option>
+                              <option value="delivered">Delivered</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+
+                            <div className="flex gap-2">
+                              <button
+                                  type="button"
+                                  disabled={invoiceLoadingId === orderId}
+                                  onClick={() => handleDownloadInvoice(orderId)}
+                                  className={actionBtn}
+                              >
+                                {invoiceLoadingId === orderId ? "..." : "Invoice PDF"}
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => handleToggleExpand(orderId)}
+                                  className={primaryBtn}
+                              >
+                                {expanded ? "Hide" : "View Details"}
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </PageShell>
+
+                        {/* EXPANDED: Product List */}
+                        {expanded && (
+                            <div className="mt-6 border-t border-white/10 pt-5 space-y-4">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
+                                  Products to Deliver
+                                </p>
+                                <p className="text-[11px] text-gray-400">
+                                  Created: {o.createdAt ? new Date(o.createdAt).toLocaleString() : "—"}
+                                </p>
+                              </div>
+
+                              {items.length === 0 ? (
+                                  <p className="text-sm text-gray-300/70">Loading items details…</p>
+                              ) : (
+                                  <div className="space-y-2">
+                                    {items.map((item) => {
+                                      const p = productsMap.get(item.productId);
+                                      const unitPrice = Number(item.unitPrice || 0);
+                                      const lineTotal = unitPrice * (item.quantity || 0);
+
+                                      let imageUrl = p?.imageUrl || null;
+                                      if (imageUrl && !imageUrl.startsWith("http")) {
+                                        imageUrl = `${apiBase}${imageUrl}`;
+                                      }
+
+                                      return (
+                                          <div
+                                              key={item.id}
+                                              className="flex items-center gap-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-3"
+                                          >
+                                            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/5 overflow-hidden flex items-center justify-center shrink-0">
+                                              {imageUrl ? (
+                                                  <img
+                                                      src={imageUrl}
+                                                      alt={p?.name || `Product`}
+                                                      className="w-full h-full object-cover"
+                                                  />
+                                              ) : (
+                                                  <span className="text-[8px] uppercase tracking-widest text-gray-500">
+                                      IMG
+                                    </span>
+                                              )}
+                                            </div>
+
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm font-semibold text-white truncate">
+                                                {p ? p.name : "Unknown Product"}
+                                                <span className="ml-2 text-[10px] font-normal text-gray-500 font-mono">
+                                      (Prod ID: {item.productId})
+                                    </span>
+                                              </p>
+                                              <p className="text-[11px] text-gray-400 mt-0.5">
+                                                <span className="text-white">Qty: {item.quantity}</span>
+                                                <span className="mx-2 opacity-30">|</span>
+                                                Price: ${unitPrice.toFixed(2)}
+                                              </p>
+                                            </div>
+
+                                            <div className="text-sm font-mono font-medium text-white/90">
+                                              ${lineTotal.toFixed(2)}
+                                            </div>
+                                          </div>
+                                      );
+                                    })}
+                                  </div>
+                              )}
+                            </div>
+                        )}
+                      </div>
+                  );
+                })}
+              </div>
+          )}
+        </div>
+      </PageShell>
   );
 }

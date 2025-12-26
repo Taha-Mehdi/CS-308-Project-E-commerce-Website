@@ -1,10 +1,16 @@
 const express = require('express');
 const { z } = require('zod');
 const { db } = require('../db');
-// 1. ADDED 'cartItems' TO IMPORTS
 const { orders, orderItems, products, users, cartItems } = require('../db/schema');
 const { eq, inArray } = require('drizzle-orm');
-const { authMiddleware, requireAdmin } = require('../middleware/auth');
+
+// ✅ FIX: Added requireProductManagerOrAdmin to the import list
+const {
+  authMiddleware,
+  requireAdmin,
+  requireProductManagerOrAdmin
+} = require('../middleware/auth');
+
 const { sendInvoiceEmail } = require('../utils/email');
 const { buildInvoicePdf } = require('./invoice');
 
@@ -120,21 +126,15 @@ router.post('/', authMiddleware, async (req, res) => {
             .where(eq(products.id, item.productId));
       }
 
-      // ============================================================
-      // 2. THE FIX: EMPTY THE CART
-      // We do this inside the transaction. If the order fails, the cart stays.
-      // If the order succeeds, the cart is wiped immediately.
-      // ============================================================
+      // Empty the cart
       await tx.delete(cartItems).where(eq(cartItems.userId, userId));
 
-
-      // Return data needed outside the transaction (for invoice email)
       return { order, orderItemsToInsert, userInfo };
     });
 
     const { order, orderItemsToInsert, userInfo } = result;
 
-    // Build invoice PDF and email it (do NOT fail order if this breaks)
+    // Build invoice PDF and email it
     try {
       const pdfBuffer = await buildInvoicePdf(order, userInfo, orderItemsToInsert);
       await sendInvoiceEmail(userInfo.email, pdfBuffer, order.id);
@@ -146,23 +146,14 @@ router.post('/', authMiddleware, async (req, res) => {
       message: 'Order created',
       orderId: order.id,
       total: order.total,
-      status: order.status, // "processing"
+      status: order.status,
     });
   } catch (err) {
     console.error('Create order error:', err);
-
     const msg = err?.message || 'Server error';
-
-    if (msg.startsWith('One or more products not found')) {
+    if (msg.startsWith('One or more products not found') || msg.startsWith('Product ') || msg.startsWith('Not enough stock')) {
       return res.status(400).json({ message: msg });
     }
-    if (msg.startsWith('Product ') && msg.includes('is not available')) {
-      return res.status(400).json({ message: msg });
-    }
-    if (msg.startsWith('Not enough stock for product')) {
-      return res.status(400).json({ message: msg });
-    }
-
     return res.status(500).json({ message: 'Server error' });
   }
 });
@@ -198,10 +189,13 @@ router.get('/my', authMiddleware, async (req, res) => {
   }
 });
 
-// ADMIN ROUTES BELOW
+// --------------------------------------------------------
+// ADMIN / PRODUCT MANAGER ROUTES
+// --------------------------------------------------------
 
-// GET /orders - list ALL orders (admin only)
-router.get('/', authMiddleware, requireAdmin, async (req, res) => {
+// GET /orders - list ALL orders
+// ✅ Updated: Uses requireProductManagerOrAdmin
+router.get('/', authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const allOrders = await db.select().from(orders);
     res.json(allOrders);
@@ -211,8 +205,9 @@ router.get('/', authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// GET /orders/:id - get a single order + its items (admin only)
-router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
+// GET /orders/:id - get a single order + its items
+// ✅ Updated: Uses requireProductManagerOrAdmin
+router.get('/:id', authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
 
@@ -240,8 +235,9 @@ router.get('/:id', authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// PATCH /orders/:id/status - update order status (admin only)
-router.patch('/:id/status', authMiddleware, requireAdmin, async (req, res) => {
+// PATCH /orders/:id/status - update order status
+// ✅ Updated: Uses requireProductManagerOrAdmin
+router.patch('/:id/status', authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
     const parsed = statusUpdateSchema.safeParse(req.body);
