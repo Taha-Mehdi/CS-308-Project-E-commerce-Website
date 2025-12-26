@@ -3,10 +3,12 @@ const router = express.Router();
 const { db } = require("../db");
 const { reviews, orders, orderItems, users } = require("../db/schema");
 const { eq, and, desc, inArray } = require("drizzle-orm");
-const { authMiddleware, requireAdmin, optionalAuthMiddleware } = require("../middleware/auth");
+// ✅ FIX: Import requireProductManagerOrAdmin
+const { authMiddleware, requireAdmin, optionalAuthMiddleware, requireProductManagerOrAdmin } = require("../middleware/auth");
 
-// GET ALL PENDING REVIEWS (Admin Dashboard)
-router.get("/pending", authMiddleware, requireAdmin, async (req, res) => {
+// GET ALL PENDING REVIEWS (Admin or Product Manager)
+// ✅ FIX: Allow Product Manager
+router.get("/pending", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const pendingReviews = await db.select().from(reviews).where(eq(reviews.status, "pending"));
     return res.json(pendingReviews);
@@ -25,29 +27,29 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
     }
 
     const currentUserId = req.user ? req.user.id : -1;
+    const role = req.user?.roleName;
 
-    // ✅ FIX: do NOT assume roleId=1 is admin
-    const isAdmin = req.user?.roleName === "admin";
+    // ✅ FIX: Product Managers should also see pending reviews
+    const canSeeHidden = role === "admin" || role === "product_manager";
 
     const result = await db
-      .select({
-        id: reviews.id,
-        userId: reviews.userId,
-        rating: reviews.rating,
-        comment: reviews.comment,
-        status: reviews.status,
-        createdAt: reviews.createdAt,
-        userName: users.fullName,
-      })
-      .from(reviews)
-      .leftJoin(users, eq(reviews.userId, users.id))
-      .where(eq(reviews.productId, productIdNum))
-      .orderBy(desc(reviews.createdAt));
+        .select({
+          id: reviews.id,
+          userId: reviews.userId,
+          rating: reviews.rating,
+          comment: reviews.comment,
+          status: reviews.status,
+          createdAt: reviews.createdAt,
+          userName: users.fullName,
+        })
+        .from(reviews)
+        .leftJoin(users, eq(reviews.userId, users.id))
+        .where(eq(reviews.productId, productIdNum))
+        .orderBy(desc(reviews.createdAt));
 
     const cleanReviews = result.map((r) => {
       const isOwner = r.userId === currentUserId;
-
-      const isHiddenPending = r.status === "pending" && !isOwner && !isAdmin;
+      const isHiddenPending = r.status === "pending" && !isOwner && !canSeeHidden;
 
       return {
         id: r.id,
@@ -55,7 +57,7 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
         userName: r.userName || "Anonymous",
         rating: r.rating,
         comment: isHiddenPending ? null : r.comment,
-        status: isHiddenPending ? "approved" : r.status,
+        status: isHiddenPending ? "approved" : r.status, // Hide status if not authorized
         createdAt: r.createdAt,
       };
     });
@@ -80,23 +82,30 @@ router.post("/", authMiddleware, async (req, res) => {
     return res.status(400).json({ message: "Rating must be between 1 and 5" });
 
   try {
+    // 1. Check if user has a DELIVERED order for this product
     const userOrders = await db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(and(eq(orders.userId, userId), eq(orders.status, "delivered")));
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.userId, userId), eq(orders.status, "delivered")));
 
     if (userOrders.length === 0)
-      return res.status(403).json({ message: "Item not purchased or not delivered." });
+      return res.status(403).json({ message: "You can only review delivered items." });
 
     const orderIds = userOrders.map((o) => o.id);
     const validItems = await db
-      .select()
-      .from(orderItems)
-      .where(and(eq(orderItems.productId, productIdNum), inArray(orderItems.orderId, orderIds)))
-      .limit(1);
+        .select()
+        .from(orderItems)
+        .where(and(eq(orderItems.productId, productIdNum), inArray(orderItems.orderId, orderIds)))
+        .limit(1);
 
     if (validItems.length === 0)
       return res.status(403).json({ message: "You have not purchased this product." });
+
+    // 2. Prevent duplicate reviews (Optional but recommended)
+    const existingReview = await db.select().from(reviews).where(and(eq(reviews.userId, userId), eq(reviews.productId, productIdNum)));
+    if (existingReview.length > 0) {
+      return res.status(409).json({ message: "You have already reviewed this product." });
+    }
 
     await db.insert(reviews).values({
       userId,
@@ -113,8 +122,9 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// APPROVE REVIEW (Admin Only)
-router.put("/:id/approve", authMiddleware, requireAdmin, async (req, res) => {
+// APPROVE REVIEW (Admin or Product Manager)
+// ✅ FIX: Allow Product Manager
+router.put("/:id/approve", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const reviewId = Number(req.params.id);
     await db.update(reviews).set({ status: "approved" }).where(eq(reviews.id, reviewId));
@@ -124,8 +134,9 @@ router.put("/:id/approve", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE REVIEW (Admin Only)
-router.delete("/:id", authMiddleware, requireAdmin, async (req, res) => {
+// DELETE REVIEW (Admin or Product Manager)
+// ✅ FIX: Allow Product Manager
+router.delete("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const reviewId = Number(req.params.id);
     await db.delete(reviews).where(eq(reviews.id, reviewId));

@@ -96,6 +96,10 @@ export default function AdminProductsPage() {
   // Toggle State
   const [showAddProduct, setShowAddProduct] = useState(false);
 
+  // ✅ NEW: Review Manager State
+  const [showReviewManager, setShowReviewManager] = useState(false);
+  const [pendingReviews, setPendingReviews] = useState([]);
+
   // Create product form
   const [newName, setNewName] = useState("");
   const [newPrice, setNewPrice] = useState("");
@@ -124,7 +128,6 @@ export default function AdminProductsPage() {
 
   const [imageUploadingId, setImageUploadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  const [pendingReviews, setPendingReviews] = useState([]);
 
   const isAdmin = user?.roleName === "admin";
   const isProductManager = user?.roleName === "product_manager";
@@ -196,6 +199,44 @@ export default function AdminProductsPage() {
     }
   }
 
+  /* --- Review Actions --- */
+  async function handleApproveReview(id) {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    try {
+      const res = await fetch(`${apiBase}/reviews/${id}/approve`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setPendingReviews(prev => prev.filter(r => r.id !== id));
+        setMsg("Review approved.");
+      } else {
+        setMsg("Failed to approve.", true);
+      }
+    } catch (e) {
+      setMsg("Error approving review.", true);
+    }
+  }
+
+  async function handleDeleteReview(id) {
+    if(!confirm("Delete this review permanently?")) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    try {
+      const res = await fetch(`${apiBase}/reviews/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setPendingReviews(prev => prev.filter(r => r.id !== id));
+        setMsg("Review deleted.");
+      } else {
+        setMsg("Failed to delete.", true);
+      }
+    } catch (e) {
+      setMsg("Error deleting review.", true);
+    }
+  }
+
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -227,7 +268,7 @@ export default function AdminProductsPage() {
           console.error("Failed to load categories", e);
         }
 
-        if (token && isAdmin) {
+        if (token && (isAdmin || isProductManager)) {
           const revRes = await fetch(`${apiBase}/reviews/pending`, {
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -253,7 +294,7 @@ export default function AdminProductsPage() {
     }
 
     if (!loadingUser) loadData();
-  }, [loadingUser, user, canEditCatalog, isAdmin]);
+  }, [loadingUser, user, canEditCatalog, isAdmin, isProductManager]);
 
   function startEdit(p) {
     setEditingId(p.id);
@@ -348,7 +389,6 @@ export default function AdminProductsPage() {
       return setMsg("Stock must be a non-negative integer.", true);
     if (!newDescription.trim()) return setMsg("Description is required.", true);
 
-    // Strict checks
     if (!newCategory) return setMsg("Category is required.", true);
     if (!newModel.trim()) return setMsg("Model is required.", true);
     if (!newSerialNumber.trim()) return setMsg("Serial number is required.", true);
@@ -397,7 +437,6 @@ export default function AdminProductsPage() {
         await uploadProductImage(created.id, newImageFile);
       }
 
-      // Reset
       setNewName("");
       setNewPrice("");
       setNewStock("");
@@ -526,7 +565,6 @@ export default function AdminProductsPage() {
     });
   }, [products, query]);
 
-  /* ----------------- states ----------------- */
   if (loadingUser) {
     return (
         <div className="min-h-screen bg-black text-white">
@@ -574,7 +612,6 @@ export default function AdminProductsPage() {
     );
   }
 
-  /* ----------------- page ----------------- */
   return (
       <div className="min-h-screen text-white">
         <div className="mx-auto max-w-6xl px-4 py-8 space-y-8">
@@ -607,24 +644,40 @@ export default function AdminProductsPage() {
             </DripLink>
           </div>
 
-          {/* Global Message (Only shows if NOT in Add Product mode, or success) */}
           {message && !showAddProduct && (
               <div className={`rounded-2xl border px-4 py-3 text-[11px] font-medium ${isError ? 'border-red-500/20 bg-red-500/10 text-red-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'}`}>
                 {message}
               </div>
           )}
 
-          {/* ✅ BUTTONS ON LEFT: Separated */}
+          {/* ✅ BUTTONS ON LEFT */}
           <div className="flex flex-wrap gap-3">
             <button
-                onClick={() => setShowCatManager(!showCatManager)}
+                onClick={() => {
+                  setShowCatManager(!showCatManager);
+                  setShowReviewManager(false);
+                }}
                 className={`px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
                     showCatManager
                         ? "bg-white text-black border-white shadow-xl scale-105"
                         : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20"
                 }`}
             >
-              {showCatManager ? "Close Categories" : "Manage Categories"}
+              {showCatManager ? "Close Categories" : "Categories"}
+            </button>
+
+            <button
+                onClick={() => {
+                  setShowReviewManager(!showReviewManager);
+                  setShowCatManager(false);
+                }}
+                className={`px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                    showReviewManager
+                        ? "bg-white text-black border-white shadow-xl scale-105"
+                        : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20"
+                }`}
+            >
+              {showReviewManager ? "Close Reviews" : `Reviews (${pendingReviews.length})`}
             </button>
 
             <button
@@ -638,6 +691,46 @@ export default function AdminProductsPage() {
               {showAddProduct ? "Cancel Adding" : "Add Product"}
             </button>
           </div>
+
+          {/* --- Review Manager Panel --- */}
+          {showReviewManager && (
+              <div className={panelClass() + " space-y-4 border-amber-500/20"}>
+                <h3 className="text-sm font-bold uppercase tracking-widest text-amber-200/70">
+                  Pending Reviews
+                </h3>
+                {pendingReviews.length === 0 ? (
+                    <p className="text-xs text-white/40 italic">No pending reviews.</p>
+                ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {pendingReviews.map(r => (
+                          <div key={r.id} className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
+                            <div className="flex justify-between items-start">
+                              <span className="text-xs font-bold text-white">UserID: {r.userId}</span>
+                              <span className="text-[10px] text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                        {r.rating} / 5 stars
+                                    </span>
+                            </div>
+                            <p className="text-xs text-gray-300 italic">"{r.comment || 'No comment'}"</p>
+                            <div className="mt-2 flex gap-2 justify-end">
+                              <button
+                                  onClick={() => handleApproveReview(r.id)}
+                                  className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-500/30"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                  onClick={() => handleDeleteReview(r.id)}
+                                  className="text-[10px] font-bold uppercase tracking-wider bg-red-500/20 text-red-200 px-3 py-1.5 rounded-full hover:bg-red-500/30"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                      ))}
+                    </div>
+                )}
+              </div>
+          )}
 
           {/* --- Category Manager Panel --- */}
           {showCatManager && (
@@ -715,7 +808,7 @@ export default function AdminProductsPage() {
                       <select
                           value={newCategory}
                           onChange={(e) => setNewCategory(e.target.value)}
-                          className={fieldBase + " bg-black/20"} // Slight contrast
+                          className={fieldBase + " bg-black/20"}
                       >
                         <option value="">Select Category *</option>
                         {categories.map((c) => (
@@ -799,7 +892,6 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="mt-8 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-white/10 pt-6">
-                  {/* ✅ ERROR MESSAGE NOW LIVES HERE, VISIBLE NEXT TO BUTTON */}
                   <div className="flex-1">
                     {message && showAddProduct && (
                         <span className={`text-xs font-medium animate-pulse ${isError ? "text-red-400" : "text-emerald-400"}`}>
@@ -864,6 +956,7 @@ export default function AdminProductsPage() {
                   return (
                       <div key={p.id} className={panelClass()}>
                         <div className="flex flex-col lg:flex-row gap-5">
+                          {/* ... existing product rendering ... */}
                           <div className="w-full lg:w-[220px] space-y-2">
                             <div className="w-full aspect-square rounded-[28px] overflow-hidden border border-white/10 bg-white/5">
                               {imageUrl ? (
@@ -944,7 +1037,6 @@ export default function AdminProductsPage() {
                               <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">
                                 $
                               </span>
-                                      {/* Price disabled for Product Manager */}
                                       <input
                                           value={editPrice}
                                           onChange={(e) => setEditPrice(e.target.value)}
