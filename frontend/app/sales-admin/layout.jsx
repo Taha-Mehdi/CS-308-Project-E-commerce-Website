@@ -24,5 +24,5 @@ export default function SalesAdminLayout({ children }) {
 
   if (loadingUser || !user || user.roleName !== "sales_manager") return null;
 
-  return <SalesShell title="Sneaks-up · Sales">{children}</SalesShell>;
+  return <SalesShell title="Sneaks-up · Sales Manager">{children}</SalesShell>;
 }
