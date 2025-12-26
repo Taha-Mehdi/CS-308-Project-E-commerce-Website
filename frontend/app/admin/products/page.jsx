@@ -8,7 +8,6 @@ import { clearStoredTokens } from "../../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-/* ---- Lighter panels + NO black block behind catalog cards ---- */
 function panelClass() {
   return [
     "rounded-[34px]",
@@ -87,6 +86,15 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+
+  /* --- Category Management State --- */
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [newCatName, setNewCatName] = useState("");
+
+  // Toggle State
+  const [showAddProduct, setShowAddProduct] = useState(false);
 
   // Create product form
   const [newName, setNewName] = useState("");
@@ -114,18 +122,19 @@ export default function AdminProductsPage() {
   const [editCategory, setEditCategory] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Per-product image upload state
   const [imageUploadingId, setImageUploadingId] = useState(null);
-
-  // Delete product
   const [deletingId, setDeletingId] = useState(null);
-
-  // Reviews (API STATE)
   const [pendingReviews, setPendingReviews] = useState([]);
 
   const isAdmin = user?.roleName === "admin";
   const isProductManager = user?.roleName === "product_manager";
   const canEditCatalog = canCatalogRole(user);
+
+  function setMsg(msg, error = false) {
+    setMessage(msg);
+    setIsError(error);
+    if (!error && msg) setTimeout(() => setMessage(""), 3000);
+  }
 
   async function safeJson(res) {
     const ct = res.headers.get("content-type") || "";
@@ -139,7 +148,52 @@ export default function AdminProductsPage() {
 
   function getCategoryLabel(categoryId) {
     if (categoryId == null) return "No category";
-    return `Category ${categoryId}`;
+    const found = categories.find((c) => c.id === categoryId);
+    return found ? found.name : `Category ${categoryId}`;
+  }
+
+  /* --- Category Actions --- */
+  async function handleAddCategory() {
+    if (!newCatName.trim()) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    try {
+      const res = await fetch(`${apiBase}/categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: newCatName }),
+      });
+      if (res.ok) {
+        const cat = await res.json();
+        setCategories((prev) => [...prev, cat]);
+        setNewCatName("");
+        setMsg("Category added.");
+      } else {
+        setMsg("Failed to add category.", true);
+      }
+    } catch (e) {
+      console.error(e);
+      setMsg("Error adding category.", true);
+    }
+  }
+
+  async function handleDeleteCategory(id) {
+    if (!confirm("Delete category? It might still be used by products.")) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    try {
+      const res = await fetch(`${apiBase}/categories/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setCategories((prev) => prev.filter((c) => c.id !== id));
+        setMsg("Category deleted.");
+      } else {
+        setMsg("Could not delete category (maybe in use).", true);
+      }
+    } catch (e) {
+      console.error(e);
+      setMsg("Error deleting category.", true);
+    }
   }
 
   useEffect(() => {
@@ -164,7 +218,15 @@ export default function AdminProductsPage() {
           setProducts([]);
         }
 
-        // Pending reviews still admin-only
+        try {
+          const catRes = await fetch(`${apiBase}/categories`);
+          if (catRes.ok) {
+            setCategories(await catRes.json());
+          }
+        } catch (e) {
+          console.error("Failed to load categories", e);
+        }
+
         if (token && isAdmin) {
           const revRes = await fetch(`${apiBase}/reviews/pending`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -184,7 +246,7 @@ export default function AdminProductsPage() {
       } catch (err) {
         console.error("Admin products load error:", err);
         if (handleAuthRedirectFromError(err, "/admin/products")) return;
-        setMessage("Failed to load catalog.");
+        setMsg("Failed to load catalog.", true);
       } finally {
         setLoading(false);
       }
@@ -224,7 +286,7 @@ export default function AdminProductsPage() {
         typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
 
     if (!token) {
-      setMessage("Please login.");
+      setMsg("Please login.", true);
       return;
     }
 
@@ -245,20 +307,19 @@ export default function AdminProductsPage() {
 
       if (!res.ok) {
         const data = await safeJson(res);
-        setMessage(data?.message || "Image upload failed");
+        setMsg(data?.message || "Image upload failed", true);
         return;
       }
 
-      // ✅ FIX: Extract nested product object to avoid unique key warnings
       const data = await res.json();
       const updatedProduct = data.product || data;
 
       setProducts((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
-      setMessage("Image updated.");
+      setMsg("Image updated.");
     } catch (err) {
       console.error("Upload image error:", err);
       if (handleAuthRedirectFromError(err, "/admin/products")) return;
-      setMessage("Image upload failed");
+      setMsg("Image upload failed", true);
     } finally {
       setImageUploadingId(null);
     }
@@ -266,32 +327,40 @@ export default function AdminProductsPage() {
 
   async function handleCreate() {
     if (!canEditCatalog) {
-      setMessage("You do not have permissions to add products.");
+      setMsg("You do not have permissions to add products.", true);
       return;
     }
 
     const token =
         typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
-      setMessage("Please login.");
+      setMsg("Please login.", true);
       return;
     }
 
     const priceNumber = Number(newPrice);
     const stockNumber = Number(newStock);
 
-    if (!newName.trim()) return setMessage("Name is required.");
+    if (!newName.trim()) return setMsg("Product name is required.", true);
     if (Number.isNaN(priceNumber) || priceNumber < 0)
-      return setMessage("Price must be a valid number.");
+      return setMsg("Price must be a valid number.", true);
     if (!Number.isInteger(stockNumber) || stockNumber < 0)
-      return setMessage("Stock must be a non-negative integer.");
-    if (!newDescription.trim()) return setMessage("Description is required.");
+      return setMsg("Stock must be a non-negative integer.", true);
+    if (!newDescription.trim()) return setMsg("Description is required.", true);
+
+    // Strict checks
+    if (!newCategory) return setMsg("Category is required.", true);
+    if (!newModel.trim()) return setMsg("Model is required.", true);
+    if (!newSerialNumber.trim()) return setMsg("Serial number is required.", true);
+    if (!newWarrantyStatus.trim()) return setMsg("Warranty status is required.", true);
+    if (!newDistributorInfo.trim()) return setMsg("Distributor info is required.", true);
+    if (!newImageFile) return setMsg("Product image is required.", true);
 
     setCreating(true);
     setMessage("");
 
     try {
-      const categoryId = newCategory ? Number(newCategory) : null;
+      const categoryId = Number(newCategory);
 
       const res = await fetch(`${apiBase}/products`, {
         method: "POST",
@@ -305,10 +374,10 @@ export default function AdminProductsPage() {
           price: priceNumber,
           stock: stockNumber,
           isActive: true,
-          model: newModel || "",
-          serialNumber: newSerialNumber || "",
-          warrantyStatus: newWarrantyStatus || "",
-          distributorInfo: newDistributorInfo || "",
+          model: newModel,
+          serialNumber: newSerialNumber,
+          warrantyStatus: newWarrantyStatus,
+          distributorInfo: newDistributorInfo,
           categoryId,
         }),
       });
@@ -317,7 +386,7 @@ export default function AdminProductsPage() {
 
       if (!res.ok) {
         const data = await safeJson(res);
-        setMessage(data?.message || "Create failed");
+        setMsg(data?.message || "Create failed", true);
         return;
       }
 
@@ -328,6 +397,7 @@ export default function AdminProductsPage() {
         await uploadProductImage(created.id, newImageFile);
       }
 
+      // Reset
       setNewName("");
       setNewPrice("");
       setNewStock("");
@@ -339,11 +409,12 @@ export default function AdminProductsPage() {
       setNewWarrantyStatus("");
       setNewDistributorInfo("");
 
-      setMessage("Product created.");
+      setShowAddProduct(false);
+      setMsg("Product created.");
     } catch (err) {
       console.error("Create product error:", err);
       if (handleAuthRedirectFromError(err, "/admin/products")) return;
-      setMessage("Create failed");
+      setMsg("Create failed", true);
     } finally {
       setCreating(false);
     }
@@ -351,19 +422,19 @@ export default function AdminProductsPage() {
 
   async function handleSaveEdit(productId) {
     if (!canEditCatalog)
-      return setMessage("You do not have permissions to update products.");
+      return setMsg("You do not have permissions to update products.", true);
 
     const token =
         typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-    if (!token) return setMessage("Please login.");
+    if (!token) return setMsg("Please login.", true);
 
     const stockNumber = Number(editStock);
     if (!Number.isInteger(stockNumber) || stockNumber < 0)
-      return setMessage("Stock must be a non-negative integer.");
+      return setMsg("Stock must be a non-negative integer.", true);
 
     const priceNumber = Number(editPrice);
     if (Number.isNaN(priceNumber) || priceNumber < 0)
-      return setMessage("Price must be a valid number.");
+      return setMsg("Price must be a valid number.", true);
 
     setSavingEdit(true);
     const categoryId = editCategory ? Number(editCategory) : null;
@@ -395,15 +466,15 @@ export default function AdminProductsPage() {
         const data = await res.json();
         setProducts((prev) => prev.map((p) => (p.id === productId ? data : p)));
         cancelEdit();
-        setMessage("Product updated.");
+        setMsg("Product updated.");
       } else {
         const data = await safeJson(res);
-        setMessage(data?.message || "Update failed");
+        setMsg(data?.message || "Update failed", true);
       }
     } catch (err) {
       console.error("Update failed:", err);
       if (handleAuthRedirectFromError(err, "/admin/products")) return;
-      setMessage("Update failed");
+      setMsg("Update failed", true);
     } finally {
       setSavingEdit(false);
     }
@@ -411,12 +482,12 @@ export default function AdminProductsPage() {
 
   async function handleDelete(productId) {
     if (!canEditCatalog)
-      return setMessage("You do not have permissions to delete products.");
+      return setMsg("You do not have permissions to delete products.", true);
     if (!confirm("Delete this product?")) return;
 
     const token =
         typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-    if (!token) return setMessage("Please login.");
+    if (!token) return setMsg("Please login.", true);
 
     setDeletingId(productId);
     try {
@@ -429,15 +500,15 @@ export default function AdminProductsPage() {
 
       if (res.ok) {
         setProducts((prev) => prev.filter((p) => p.id !== productId));
-        setMessage("Product deleted.");
+        setMsg("Product deleted.");
       } else {
         const data = await safeJson(res);
-        setMessage(data?.message || "Delete failed");
+        setMsg(data?.message || "Delete failed", true);
       }
     } catch (err) {
       console.error("Delete failed:", err);
       if (handleAuthRedirectFromError(err, "/admin/products")) return;
-      setMessage("Delete failed");
+      setMsg("Delete failed", true);
     } finally {
       setDeletingId(null);
     }
@@ -536,152 +607,229 @@ export default function AdminProductsPage() {
             </DripLink>
           </div>
 
-          {message && (
-              <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
+          {/* Global Message (Only shows if NOT in Add Product mode, or success) */}
+          {message && !showAddProduct && (
+              <div className={`rounded-2xl border px-4 py-3 text-[11px] font-medium ${isError ? 'border-red-500/20 bg-red-500/10 text-red-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'}`}>
                 {message}
               </div>
           )}
 
-          {/* Add Product */}
-          <div className={panelClass()}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
-                  Add product
-                </p>
-                <p className="mt-1 text-[12px] text-gray-300/70">
-                  Fill the essentials, then optional metadata. Upload an image to finish.
-                </p>
-              </div>
+          {/* ✅ BUTTONS ON LEFT: Separated */}
+          <div className="flex flex-wrap gap-3">
+            <button
+                onClick={() => setShowCatManager(!showCatManager)}
+                className={`px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                    showCatManager
+                        ? "bg-white text-black border-white shadow-xl scale-105"
+                        : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20"
+                }`}
+            >
+              {showCatManager ? "Close Categories" : "Manage Categories"}
+            </button>
 
-              <div className="flex items-center gap-2">
-                <span className={chip("ok")}>Catalog tools</span>
-                <span className={chip("muted")}>Fast create</span>
-              </div>
-            </div>
+            <button
+                onClick={() => setShowAddProduct(!showAddProduct)}
+                className={`px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                    showAddProduct
+                        ? "bg-white text-black border-white shadow-xl scale-105"
+                        : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20"
+                }`}
+            >
+              {showAddProduct ? "Cancel Adding" : "Add Product"}
+            </button>
+          </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.92fr]">
-              {/* Left */}
-              <div className="space-y-4 flex flex-col">
-                <div className="grid gap-3 sm:grid-cols-2">
+          {/* --- Category Manager Panel --- */}
+          {showCatManager && (
+              <div className={panelClass() + " space-y-4 border-emerald-500/20"}>
+                <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-300/70">
+                  Categories
+                </h3>
+                <div className="flex gap-2 max-w-md">
                   <input
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder="Product name *"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      placeholder="New category name"
                       className={fieldBase}
                   />
-                  <input
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      placeholder="Category ID (optional)"
-                      className={fieldBase}
-                  />
+                  <button
+                      onClick={handleAddCategory}
+                      className={btnBase + " " + btnPrimary}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {categories.map((c) => (
+                      <div
+                          key={c.id}
+                          className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/10"
+                      >
+                  <span className="text-xs text-white/80">
+                    {c.name} <span className="opacity-50">(ID: {c.id})</span>
+                  </span>
+                        <button
+                            onClick={() => handleDeleteCategory(c.id)}
+                            className="text-red-400 hover:text-red-200 ml-1 font-bold text-lg leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                  ))}
+                  {categories.length === 0 && (
+                      <div className="text-xs text-white/40 italic">
+                        No categories found.
+                      </div>
+                  )}
+                </div>
+              </div>
+          )}
+
+          {/* ✅ ADD PRODUCT FORM */}
+          {showAddProduct && (
+              <div className={panelClass() + " border-white/20"}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6">
+                  <div>
+                    <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-white/90">
+                      New Product Entry
+                    </p>
+                    <p className="mt-1 text-[12px] text-gray-300/60">
+                      All fields are mandatory.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={chip("ok")}>Active</span>
+                  </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                      value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
-                      placeholder="Price *"
-                      inputMode="decimal"
-                      className={fieldBase}
-                  />
-                  <input
-                      value={newStock}
-                      onChange={(e) => setNewStock(e.target.value)}
-                      placeholder="Stock *"
-                      inputMode="numeric"
-                      className={fieldBase}
-                  />
-                </div>
-
-                <textarea
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="Description *"
-                    rows={7}
-                    className={textAreaBase + " flex-1 min-h-[220px]"}
-                />
-              </div>
-
-              {/* Right */}
-              <div className="rounded-[30px] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
-                <p className="text-[10px] font-semibold tracking-[0.26em] uppercase text-gray-300/60">
-                  Optional details
-                </p>
-
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Model" className={fieldBase} />
-                  <input value={newSerialNumber} onChange={(e) => setNewSerialNumber(e.target.value)} placeholder="Serial number" className={fieldBase} />
-                  <input value={newWarrantyStatus} onChange={(e) => setNewWarrantyStatus(e.target.value)} placeholder="Warranty status" className={fieldBase} />
-                  <input value={newDistributorInfo} onChange={(e) => setNewDistributorInfo(e.target.value)} placeholder="Distributor info" className={fieldBase} />
-                </div>
-
-                <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold text-white/90">Product image</p>
-                      <p className="text-[11px] text-gray-300/60">
-                        {newImageFile ? (
-                            <span className="text-gray-200/80 break-all">{newImageFile.name}</span>
-                        ) : (
-                            "PNG/JPG/WebP recommended"
-                        )}
-                      </p>
+                <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+                  {/* Left Column */}
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          placeholder="Product name *"
+                          className={fieldBase}
+                      />
+                      <select
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          className={fieldBase + " bg-black/20"} // Slight contrast
+                      >
+                        <option value="">Select Category *</option>
+                        {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <label className={btnBase + " " + btnGhost + " cursor-pointer px-5"}>
-                      Choose file
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
+                          value={newPrice}
+                          onChange={(e) => setNewPrice(e.target.value)}
+                          placeholder="Price *"
+                          inputMode="decimal"
+                          className={fieldBase}
                       />
-                    </label>
+                      <input
+                          value={newStock}
+                          onChange={(e) => setNewStock(e.target.value)}
+                          placeholder="Stock *"
+                          inputMode="numeric"
+                          className={fieldBase}
+                      />
+                    </div>
+
+                    <textarea
+                        value={newDescription}
+                        onChange={(e) => setNewDescription(e.target.value)}
+                        placeholder="Description *"
+                        rows={7}
+                        className={textAreaBase + " w-full min-h-[220px]"}
+                    />
+                  </div>
+
+                  {/* Right Column */}
+                  <div className="space-y-4 rounded-[28px] bg-white/5 p-5 border border-white/5">
+                    <p className="text-[10px] font-semibold tracking-[0.26em] uppercase text-white/50 mb-2">
+                      Required Details
+                    </p>
+
+                    <div className="grid gap-3">
+                      <input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Model *" className={fieldBase} />
+                      <input value={newSerialNumber} onChange={(e) => setNewSerialNumber(e.target.value)} placeholder="Serial number *" className={fieldBase} />
+                      <input value={newWarrantyStatus} onChange={(e) => setNewWarrantyStatus(e.target.value)} placeholder="Warranty status *" className={fieldBase} />
+                      <input value={newDistributorInfo} onChange={(e) => setNewDistributorInfo(e.target.value)} placeholder="Distributor info *" className={fieldBase} />
+                    </div>
+
+                    <div className="mt-2 pt-4 border-t border-white/10">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-white/90">
+                            Product image *
+                          </p>
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                            {newImageFile ? (
+                                <span className="text-emerald-300">{newImageFile.name}</span>
+                            ) : (
+                                "No file chosen"
+                            )}
+                          </p>
+                        </div>
+
+                        <label
+                            className={`${btnBase} ${btnGhost} h-9 px-4 text-[10px] cursor-pointer`}
+                        >
+                          Choose file
+                          <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                  setNewImageFile(e.target.files?.[0] || null)
+                              }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-white/10 pt-6">
+                  {/* ✅ ERROR MESSAGE NOW LIVES HERE, VISIBLE NEXT TO BUTTON */}
+                  <div className="flex-1">
+                    {message && showAddProduct && (
+                        <span className={`text-xs font-medium animate-pulse ${isError ? "text-red-400" : "text-emerald-400"}`}>
+                      {isError ? "⚠️ " : "✓ "} {message}
+                    </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button
+                        type="button"
+                        onClick={() => setShowAddProduct(false)}
+                        className={btnBase + " " + btnGhost}
+                        disabled={creating}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                        type="button"
+                        disabled={creating}
+                        onClick={handleCreate}
+                        className={btnBase + " " + btnPrimary}
+                    >
+                      {creating ? "Creating…" : "Create Product"}
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-5">
-              <div className="text-[11px] text-gray-300/60">
-                Fields marked with <span className="text-white/80">*</span> are required.
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <button
-                    type="button"
-                    onClick={() => {
-                      setNewName("");
-                      setNewPrice("");
-                      setNewStock("");
-                      setNewDescription("");
-                      setNewImageFile(null);
-                      setNewCategory("");
-                      setNewModel("");
-                      setNewSerialNumber("");
-                      setNewWarrantyStatus("");
-                      setNewDistributorInfo("");
-                      setMessage("");
-                    }}
-                    className={btnBase + " " + btnGhost}
-                    disabled={creating}
-                >
-                  Clear
-                </button>
-
-                <button
-                    type="button"
-                    disabled={creating}
-                    onClick={handleCreate}
-                    className={btnBase + " " + btnPrimary}
-                >
-                  {creating ? "Creating…" : "Create product"}
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Search */}
           <div className={panelClass()}>
@@ -698,7 +846,7 @@ export default function AdminProductsPage() {
             </div>
           </div>
 
-          {/* LIST WRAPPER UPDATED: removed any dark backing container */}
+          {/* LIST WRAPPER */}
           {loading ? (
               <div className={panelClass()}>
                 <p className="text-sm text-gray-300/70">Loading catalog…</p>
@@ -735,7 +883,9 @@ export default function AdminProductsPage() {
                         <span className={chip("muted")}>
                           {p.isActive === false ? "Inactive" : "Active"}
                         </span>
-                              <span className={chip("muted")}>{getCategoryLabel(p.categoryId)}</span>
+                              <span className={chip("muted")}>
+                          {getCategoryLabel(p.categoryId)}
+                        </span>
                               {p.discountRate ? (
                                   <span className={chip("warn")}>
                             {Number(p.discountRate).toFixed(2)}% off
@@ -743,7 +893,11 @@ export default function AdminProductsPage() {
                               ) : null}
                             </div>
 
-                            <label className={btnBase + " " + btnGhost + " w-full cursor-pointer px-4"}>
+                            <label
+                                className={
+                                    btnBase + " " + btnGhost + " w-full cursor-pointer px-4"
+                                }
+                            >
                               {imageUploadingId === p.id
                                   ? "Uploading…"
                                   : imageUrl
@@ -773,25 +927,37 @@ export default function AdminProductsPage() {
                                         className={fieldBase + " w-full"}
                                     />
                                 ) : (
-                                    <h2 className="text-lg font-semibold text-white truncate">{p.name}</h2>
+                                    <h2 className="text-lg font-semibold text-white truncate">
+                                      {p.name}
+                                    </h2>
                                 )}
 
                                 <p className="text-[11px] text-gray-300/60">
-                                  ID: {p.id} · Model: {p.model || "—"} · Serial: {p.serialNumber || "—"}
+                                  ID: {p.id} · Model: {p.model || "—"} · Serial:{" "}
+                                  {p.serialNumber || "—"}
                                 </p>
                               </div>
 
                               <div className="flex items-center gap-3">
                                 {isEditing ? (
                                     <div className="flex items-center gap-2">
-                                      <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">$</span>
-                                      {/* ✅ FIX: Disable price editing for Product Managers */}
+                              <span className="text-[11px] text-gray-300/60 uppercase tracking-[0.18em]">
+                                $
+                              </span>
+                                      {/* Price disabled for Product Manager */}
                                       <input
                                           value={editPrice}
                                           onChange={(e) => setEditPrice(e.target.value)}
-                                          className={fieldBase + " w-28 text-right disabled:opacity-50 disabled:cursor-not-allowed"}
+                                          className={
+                                              fieldBase +
+                                              " w-28 text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                                          }
                                           disabled={isProductManager}
-                                          title={isProductManager ? "Only Sales Managers can edit price" : ""}
+                                          title={
+                                            isProductManager
+                                                ? "Only Sales Managers can edit price"
+                                                : ""
+                                          }
                                       />
                                     </div>
                                 ) : (
@@ -840,6 +1006,25 @@ export default function AdminProductsPage() {
                               </span>
                                     )}
                                   </p>
+                              )}
+                              {isEditing && (
+                                  <div className="mt-2">
+                                    <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60 mb-1">
+                                      Category
+                                    </p>
+                                    <select
+                                        value={editCategory}
+                                        onChange={(e) => setEditCategory(e.target.value)}
+                                        className={fieldBase + " w-full md:w-1/2"}
+                                    >
+                                      <option value="">Select Category</option>
+                                      {categories.map((c) => (
+                                          <option key={c.id} value={c.id}>
+                                            {c.name}
+                                          </option>
+                                      ))}
+                                    </select>
+                                  </div>
                               )}
                             </div>
 

@@ -14,8 +14,8 @@ const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
 const orderRoutes = require("./routes/orders");
 const cartRoutes = require("./routes/cart");
+const categoriesRouter = require("./routes/categories");
 
-// ✅ FIX: invoiceRoutes must be a Router function
 const invoiceRoutes = require("./routes/invoice");
 
 const reviewsRoutes = require("./routes/reviews");
@@ -94,6 +94,7 @@ app.get("/db-health", async (req, res) => {
 // API routes
 app.use("/auth", authRoutes);
 app.use("/products", productRoutes);
+app.use("/categories", categoriesRouter);
 app.use("/orders", orderRoutes);
 app.use("/cart", cartRoutes);
 app.use("/invoice", invoiceRoutes);

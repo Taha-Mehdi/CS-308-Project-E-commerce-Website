@@ -45,7 +45,10 @@ const productBodySchema = z.object({
   distributorInfo: z.string().min(1, "Distributor information is required"),
 
   isActive: z.boolean().optional().default(true),
-  categoryId: z.number().int().optional().nullable(),
+
+  // ✅ UPDATED: Category is now REQUIRED
+  categoryId: z.number().int({ required_error: "Category is required" }),
+
   cost: z.number().nonnegative("Cost must be >= 0").optional(),
 });
 
@@ -153,7 +156,7 @@ router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) 
           distributorInfo: data.distributorInfo,
 
           isActive: data.isActive,
-          categoryId: data.categoryId ?? null,
+          categoryId: data.categoryId, // Required now
           cost: data.cost ?? null,
 
           originalPrice: null,
@@ -169,7 +172,6 @@ router.post("/", authMiddleware, requireProductManagerOrAdmin, async (req, res) 
 });
 
 // PUT /products/:id (admin OR product manager OR sales manager)
-// ✅ UPDATED: Added manual role check to include 'sales_manager'
 router.put("/:id", authMiddleware, async (req, res, next) => {
   const role = req.user?.roleName;
   const allowed = ["admin", "product_manager", "sales_manager"];
@@ -227,7 +229,7 @@ router.put("/:id", authMiddleware, async (req, res, next) => {
           distributorInfo: data.distributorInfo,
 
           isActive: data.isActive,
-          categoryId: data.categoryId ?? null,
+          categoryId: data.categoryId, // Required now
           cost: data.cost ?? null,
         })
         .where(eq(products.id, id))
@@ -245,9 +247,6 @@ router.put("/:id", authMiddleware, async (req, res, next) => {
 });
 
 // ------------------ DISCOUNTS ------------------
-// Frontend expects POST /products/discounts
-// body: { productIds: number[], discountRate: number } (0..100)
-// rate 0 clears discount and restores original
 const discountSchema = z.object({
   productIds: z.array(z.coerce.number().int().positive()).min(1),
   discountRate: z.coerce.number().min(0).max(100),
@@ -276,15 +275,12 @@ async function handleDiscount(req, res) {
 
       for (const p of rows) {
         const currentPrice = Number(p.price);
-
-        // "baseOriginal" is the stable pre-discount price
         const baseOriginal =
             p.originalPrice !== null && p.originalPrice !== undefined
                 ? Number(p.originalPrice)
                 : currentPrice;
 
         if (discountRate <= 0) {
-          // restore
           const restoredPrice =
               p.originalPrice !== null && p.originalPrice !== undefined
                   ? Number(p.originalPrice)
@@ -322,7 +318,6 @@ async function handleDiscount(req, res) {
       return out;
     });
 
-    // Notify wishlist users (only when applying a discount > 0)
     if (discountRate > 0) {
       try {
         const wishRows = await db
@@ -331,7 +326,7 @@ async function handleDiscount(req, res) {
             .where(inArray(wishlistItems.productId, productIds));
 
         if (wishRows.length > 0) {
-          const byUser = new Map(); // userId -> Set(productId)
+          const byUser = new Map();
           for (const w of wishRows) {
             if (!byUser.has(w.userId)) byUser.set(w.userId, new Set());
             byUser.get(w.userId).add(w.productId);
@@ -371,13 +366,9 @@ async function handleDiscount(req, res) {
   }
 }
 
-// ✅ sales_manager ONLY (strict)
 router.post("/discounts", authMiddleware, requireSalesManager, handleDiscount);
-// ✅ Keep old endpoint as alias
 router.post("/discount", authMiddleware, requireSalesManager, handleDiscount);
 
-// DELETE /products/:id (admin OR product_manager)
-// ✅ UPDATED: Changed to allow product manager
 router.delete("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -397,8 +388,6 @@ router.delete("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, 
   }
 });
 
-// POST /products/:id/image (admin OR product_manager)
-// ✅ UPDATED: Changed to allow product manager
 router.post(
     "/:id/image",
     authMiddleware,
