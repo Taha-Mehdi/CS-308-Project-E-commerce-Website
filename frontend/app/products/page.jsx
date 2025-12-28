@@ -5,6 +5,7 @@ import SiteLayout from "../../components/SiteLayout";
 import DripLink from "../../components/DripLink";
 import StockBadge from "../../components/StockBadge";
 import { useAuth } from "../../context/AuthContext";
+import { getWishlistApi, addToWishlistApi, removeFromWishlistApi } from "../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -176,6 +177,8 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState("popularity");
 
   const [addingId, setAddingId] = useState(null);
+  const [wishlistIds, setWishlistIds] = useState(() => new Set());
+  const [wishToggling, setWishToggling] = useState(false);
 
   const isBrowser = typeof window !== "undefined";
 
@@ -237,6 +240,35 @@ export default function ProductsPage() {
     loadProducts();
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadWishlist() {
+      if (!user) {
+        if (alive) setWishlistIds(new Set());
+        return;
+      }
+      try {
+        const data = await getWishlistApi();
+        const ids = new Set(
+          Array.isArray(data)
+            ? data
+                .map((x) => (typeof x === "number" ? x : Number(x?.productId)))
+                .filter((n) => Number.isInteger(n) && n > 0)
+            : []
+        );
+        if (alive) setWishlistIds(ids);
+      } catch {
+        if (alive) setWishlistIds(new Set());
+      }
+    }
+
+    loadWishlist();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
   const filteredAndSorted = useMemo(() => {
     let list = [...products];
     list = list.filter((p) => p?.isActive !== false);
@@ -288,6 +320,45 @@ export default function ProductsPage() {
     setMaxPrice("");
     setCategoryFilter("all");
     setSortBy("popularity");
+  }
+
+  async function toggleWishlist(productId) {
+    if (!user) {
+      const msg = "Please log in to use wishlist.";
+      setMessage(msg);
+      showAlert(msg);
+      return;
+    }
+
+    const productIdNum = Number(productId);
+    const currentlyWished = wishlistIds.has(productIdNum);
+
+    setWishToggling(true);
+
+    setWishlistIds((prev) => {
+      const next = new Set(prev);
+      if (currentlyWished) next.delete(productIdNum);
+      else next.add(productIdNum);
+      return next;
+    });
+
+    try {
+      if (currentlyWished) await removeFromWishlistApi(productIdNum);
+      else await addToWishlistApi(productIdNum);
+      setMessage(currentlyWished ? "Removed from wishlist." : "Added to wishlist.");
+    } catch {
+      setWishlistIds((prev) => {
+        const next = new Set(prev);
+        if (currentlyWished) next.add(productIdNum);
+        else next.delete(productIdNum);
+        return next;
+      });
+      const msg = "Wishlist action failed.";
+      setMessage(msg);
+      showAlert(msg);
+    } finally {
+      setWishToggling(false);
+    }
   }
 
   async function handleAddToCart(product) {
@@ -499,6 +570,7 @@ export default function ProductsPage() {
               const isSoldOut = stock <= 0;
 
               const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
+              const isWishlisted = wishlistIds.has(Number(product.id));
 
               return (
                 <div
@@ -525,8 +597,43 @@ export default function ProductsPage() {
                       )}
                     </div>
 
-                    <div className="absolute left-3 top-3">
+                    <div className="absolute left-3 top-3 flex gap-2">
                       <StockBadge stock={product?.stock} ink="dark" />
+                    </div>
+
+                    <div className="absolute left-3 bottom-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleWishlist(product.id);
+                        }}
+                        disabled={wishToggling}
+                        className={[
+                          "p-2.5 rounded-full backdrop-blur transition-all active:scale-95",
+                          "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
+                          isWishlisted
+                            ? "bg-rose-500/90 border border-rose-400/30 text-white hover:bg-rose-600/90"
+                            : "bg-black/60 border border-white/15 text-white/80 hover:bg-black/80 hover:text-white",
+                          wishToggling && "opacity-50 cursor-not-allowed"
+                        ].join(" ")}
+                        aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill={isWishlisted ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                          />
+                        </svg>
+                      </button>
                     </div>
 
                     <div className="absolute right-3 top-3 flex flex-col items-end gap-1">

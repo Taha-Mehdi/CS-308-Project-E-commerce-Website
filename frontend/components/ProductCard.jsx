@@ -7,7 +7,12 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-export default function ProductCard({ product }) {
+export default function ProductCard({
+  product,
+  wishlistIds,
+  onWishlistToggle,
+  wishToggling
+}) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
 
@@ -32,19 +37,30 @@ export default function ProductCard({ product }) {
   const original = hasDiscount ? round2(originalNum).toFixed(2) : null;
   const badgeRate = hasDiscount ? round2(rateNum).toFixed(0) : null;
 
+  const isWishlisted = wishlistIds ? wishlistIds.has(Number(product.id)) : false;
+
+  const handleWishlistClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onWishlistToggle) {
+      onWishlistToggle(product.id);
+    }
+  };
+
   return (
-    <Link
-      href={`/products/${product.id}`}
-      className="
-        group relative block overflow-hidden rounded-[28px]
-        border border-border
-        bg-[color-mix(in_oklab,var(--background)_78%,black_22%)]
-        shadow-[0_18px_55px_rgba(0,0,0,0.45)]
-        transition-transform duration-200
-        hover:-translate-y-1.5
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--drip-accent)]
-      "
-    >
+    <div className="relative group">
+      <Link
+        href={`/products/${product.id}`}
+        className="
+          block overflow-hidden rounded-[28px]
+          border border-border
+          bg-[color-mix(in_oklab,var(--background)_78%,black_22%)]
+          shadow-[0_18px_55px_rgba(0,0,0,0.45)]
+          transition-transform duration-200
+          hover:-translate-y-1.5
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--drip-accent)]
+        "
+      >
       {/* Soft gradient glow */}
       <div
         className="
@@ -118,6 +134,40 @@ export default function ProductCard({ product }) {
         <div className="absolute left-4 bottom-4">
           <StockBadge stock={product.stock} tone="muted" />
         </div>
+
+        {/* Wishlist button */}
+        {onWishlistToggle && (
+          <div className="absolute right-4 bottom-4">
+            <button
+              type="button"
+              onClick={handleWishlistClick}
+              disabled={wishToggling}
+              className={[
+                "p-2.5 rounded-full backdrop-blur transition-all active:scale-95",
+                "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
+                isWishlisted
+                  ? "bg-rose-500/90 border border-rose-400/30 text-white hover:bg-rose-600/90"
+                  : "bg-black/60 border border-white/15 text-white/80 hover:bg-black/80 hover:text-white",
+                wishToggling && "opacity-50 cursor-not-allowed"
+              ].join(" ")}
+              aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              <svg
+                className="w-4 h-4"
+                fill={isWishlisted ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* TEXT */}
@@ -145,5 +195,6 @@ export default function ProductCard({ product }) {
         </div>
       </div>
     </Link>
+    </div>
   );
 }

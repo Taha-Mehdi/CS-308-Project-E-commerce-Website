@@ -6,13 +6,16 @@ import Link from "next/link";
 import SiteLayout from "../components/SiteLayout";
 import ProductCard from "../components/ProductCard";
 import { useAuth } from "../context/AuthContext";
+import { getWishlistApi, addToWishlistApi, removeFromWishlistApi } from "../lib/api";
 
 export default function HomePage() {
-  const { user } = useAuth(); // kept (you may use it later)
+  const { user } = useAuth();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [wishlistIds, setWishlistIds] = useState(() => new Set());
+  const [wishToggling, setWishToggling] = useState(false);
 
   // Drop Radar rotation
   const [liveIndex, setLiveIndex] = useState(0);
@@ -60,6 +63,38 @@ export default function HomePage() {
     loadProducts();
     return () => controller.abort();
   }, [apiBase]);
+
+  // -------------------------
+  // Load wishlist
+  // -------------------------
+  useEffect(() => {
+    let alive = true;
+
+    async function loadWishlist() {
+      if (!user) {
+        if (alive) setWishlistIds(new Set());
+        return;
+      }
+      try {
+        const data = await getWishlistApi();
+        const ids = new Set(
+          Array.isArray(data)
+            ? data
+                .map((x) => (typeof x === "number" ? x : Number(x?.productId)))
+                .filter((n) => Number.isInteger(n) && n > 0)
+            : []
+        );
+        if (alive) setWishlistIds(ids);
+      } catch {
+        if (alive) setWishlistIds(new Set());
+      }
+    }
+
+    loadWishlist();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   // -------------------------
   // Auto-rotate (pause on hover)
@@ -155,6 +190,42 @@ export default function HomePage() {
   const livePrice = formatPrice(p0?.price);
   const liveId = p0?.id;
   const liveHref = liveId ? `/products/${liveId}` : "/products";
+
+  // -------------------------
+  // Wishlist toggle
+  // -------------------------
+  async function toggleWishlist(productId) {
+    if (!user) {
+      alert("Please log in to use wishlist.");
+      return;
+    }
+
+    const productIdNum = Number(productId);
+    const currentlyWished = wishlistIds.has(productIdNum);
+
+    setWishToggling(true);
+
+    setWishlistIds((prev) => {
+      const next = new Set(prev);
+      if (currentlyWished) next.delete(productIdNum);
+      else next.add(productIdNum);
+      return next;
+    });
+
+    try {
+      if (currentlyWished) await removeFromWishlistApi(productIdNum);
+      else await addToWishlistApi(productIdNum);
+    } catch {
+      setWishlistIds((prev) => {
+        const next = new Set(prev);
+        if (currentlyWished) next.add(productIdNum);
+        else next.delete(productIdNum);
+        return next;
+      });
+    } finally {
+      setWishToggling(false);
+    }
+  }
 
   return (
     <SiteLayout>
@@ -314,7 +385,13 @@ export default function HomePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               {featured.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  wishlistIds={wishlistIds}
+                  onWishlistToggle={toggleWishlist}
+                  wishToggling={wishToggling}
+                />
               ))}
             </div>
           )}
@@ -605,7 +682,13 @@ export default function HomePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               {newArrivals.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  wishlistIds={wishlistIds}
+                  onWishlistToggle={toggleWishlist}
+                  wishToggling={wishToggling}
+                />
               ))}
             </div>
           )}
@@ -691,7 +774,13 @@ export default function HomePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               {mostWanted.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  wishlistIds={wishlistIds}
+                  onWishlistToggle={toggleWishlist}
+                  wishToggling={wishToggling}
+                />
               ))}
             </div>
           )}
