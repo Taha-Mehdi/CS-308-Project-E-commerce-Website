@@ -30,6 +30,73 @@ function getCategoryLabel(categoryId) {
   return `Category #${n}`;
 }
 
+function formatMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0.00";
+  return n.toFixed(2);
+}
+
+/**
+ * Pricing normalization:
+ * Supports multiple backend shapes without double-discounting.
+ *
+ * Expected (any of):
+ * - originalPrice + discountedPrice
+ * - originalPrice + discountPercentage
+ * - price + discountPercentage (price treated as original)
+ * - price (no discount)
+ */
+function getPricing(product) {
+  const price = Number(product?.price);
+  const originalCandidate = Number(product?.originalPrice ?? product?.basePrice ?? product?.priceBeforeDiscount ?? product?.compareAtPrice);
+  const discountedCandidate = Number(product?.discountedPrice ?? product?.salePrice ?? product?.finalPrice ?? product?.priceAfterDiscount);
+
+  const discountPct = Number(
+    product?.discountPercentage ??
+      product?.discountPercent ??
+      product?.discountPct ??
+      product?.discount ??
+      product?.salePercentage
+  );
+
+  // If backend gives both original and discounted explicitly
+  if (Number.isFinite(originalCandidate) && originalCandidate > 0 && Number.isFinite(discountedCandidate) && discountedCandidate > 0) {
+    const original = originalCandidate;
+    const final = Math.min(discountedCandidate, originalCandidate);
+    const pct = original > 0 ? Math.round(((original - final) / original) * 100) : 0;
+    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+  }
+
+  // If backend gives original + percent
+  if (Number.isFinite(originalCandidate) && originalCandidate > 0 && Number.isFinite(discountPct) && discountPct > 0) {
+    const original = originalCandidate;
+    const final = Math.max(0, original * (1 - discountPct / 100));
+    const pct = Math.round(discountPct);
+    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+  }
+
+  // If backend gives price + percent (treat price as original)
+  if (Number.isFinite(price) && price > 0 && Number.isFinite(discountPct) && discountPct > 0) {
+    const original = price;
+    const final = Math.max(0, original * (1 - discountPct / 100));
+    const pct = Math.round(discountPct);
+    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+  }
+
+  // If backend gives only discounted price (rare), prefer it but try to use compareAtPrice/original if present
+  if (Number.isFinite(price) && price > 0 && Number.isFinite(originalCandidate) && originalCandidate > price) {
+    const original = originalCandidate;
+    const final = price;
+    const pct = Math.round(((original - final) / original) * 100);
+    return { originalPrice: original, finalPrice: final, hasDiscount: true, discountPercent: pct };
+  }
+
+  // Default: no discount
+  const final = Number.isFinite(price) && price > 0 ? price : 0;
+  return { originalPrice: final, finalPrice: final, hasDiscount: false, discountPercent: 0 };
+}
+
+
 /**
  * Premium custom dropdown:
  * - No hydration mismatch (single-line classNames)
@@ -184,10 +251,10 @@ export default function ProductsPage() {
     }
 
     const min = parseFloat(minPrice);
-    if (!Number.isNaN(min)) list = list.filter((p) => Number(p?.price || 0) >= min);
+    if (!Number.isNaN(min)) list = list.filter((p) => getPricing(p).finalPrice >= min);
 
     const max = parseFloat(maxPrice);
-    if (!Number.isNaN(max)) list = list.filter((p) => Number(p?.price || 0) <= max);
+    if (!Number.isNaN(max)) list = list.filter((p) => getPricing(p).finalPrice <= max);
 
     if (categoryFilter !== "all") {
       const catId = Number(categoryFilter);
@@ -196,10 +263,10 @@ export default function ProductsPage() {
 
     switch (sortBy) {
       case "priceAsc":
-        list.sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
+        list.sort((a, b) => getPricing(a).finalPrice - getPricing(b).finalPrice);
         break;
       case "priceDesc":
-        list.sort((a, b) => Number(b?.price || 0) - Number(a?.price || 0));
+        list.sort((a, b) => getPricing(b).finalPrice - getPricing(a).finalPrice);
         break;
       case "popularity":
       default:
@@ -427,7 +494,7 @@ export default function ProductsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredAndSorted.map((product) => {
-              const priceNumber = Number(product?.price || 0);
+              const { originalPrice, finalPrice, hasDiscount, discountPercent } = getPricing(product);
               const stock = Number(product?.stock || 0);
               const isSoldOut = stock <= 0;
 
@@ -462,9 +529,22 @@ export default function ProductsPage() {
                       <StockBadge stock={product?.stock} ink="dark" />
                     </div>
 
-                    <div className="absolute right-3 top-3">
-                      <span className="inline-flex items-center rounded-full px-3 py-1 border border-black/10 bg-white/80 backdrop-blur text-[12px] font-semibold text-black shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
-                        ${priceNumber.toFixed(2)}
+                    <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
+                      {hasDiscount && discountPercent > 0 && (
+                        <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-white/15 bg-black/70 backdrop-blur text-[10px] font-semibold tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+                          -{discountPercent}%
+                        </span>
+                      )}
+
+                      <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-black/10 bg-white/80 backdrop-blur shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+                        {hasDiscount && (
+                          <span className="text-[11px] font-semibold text-black/45 line-through">
+                            ${formatMoney(originalPrice)}
+                          </span>
+                        )}
+                        <span className="text-[12px] font-semibold text-black">
+                          ${formatMoney(finalPrice)}
+                        </span>
                       </span>
                     </div>
 

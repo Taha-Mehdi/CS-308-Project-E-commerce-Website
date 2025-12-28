@@ -55,45 +55,84 @@ function clamp(n, a, b) {
 }
 
 function getDiscountInfo(product, basePrice) {
-  const p = Number(basePrice || 0);
+  // basePrice is whatever the backend returns as "price".
+  // Some backends return the *discounted* price in `price` and keep the original in a different field.
+  // This helper tries to reliably show: original (strikethrough) + discounted (current).
+
+  const current = Number(basePrice || 0);
+
+  const originalRaw =
+    product?.originalPrice ??
+    product?.original_price ??
+    product?.regularPrice ??
+    product?.regular_price ??
+    product?.compareAtPrice ??
+    product?.compare_at_price ??
+    product?.listPrice ??
+    product?.list_price ??
+    product?.mrp ??
+    product?.msrp;
 
   const pctRaw =
-      product?.discountPercent ??
-      product?.discount_percentage ??
-      product?.discountPercentage ??
-      product?.discount_pct ??
-      product?.discountRate;
+    product?.discountPercent ??
+    product?.discount_percentage ??
+    product?.discountPercentage ??
+    product?.discount_pct ??
+    product?.discountRate;
 
   const saleRaw =
-      product?.discountedPrice ??
-      product?.discount_price ??
-      product?.discountPrice ??
-      product?.salePrice ??
-      product?.sale_price ??
-      product?.finalPrice ??
-      product?.final_price;
+    product?.discountedPrice ??
+    product?.discount_price ??
+    product?.discountPrice ??
+    product?.salePrice ??
+    product?.sale_price ??
+    product?.finalPrice ??
+    product?.final_price;
+
+  let original = Number(originalRaw);
+  if (!Number.isFinite(original) || original <= 0) original = null;
 
   let pct = Number(pctRaw);
-  if (!Number.isFinite(pct)) pct = null;
+  if (!Number.isFinite(pct) || pct <= 0) pct = null;
 
   let sale = Number(saleRaw);
-  if (!Number.isFinite(sale)) sale = null;
+  if (!Number.isFinite(sale) || sale <= 0) sale = null;
 
-  if (pct !== null && pct > 0 && p > 0) {
-    const computed = p * (1 - pct / 100);
+  // If backend already applied discount into `price` AND also provides a discount percent,
+  // it's common that `price === discountedPrice` (or discountedPrice is missing).
+  // In that case, infer original price from the discounted price and percent.
+  if (original === null && pct !== null) {
+    const discountedCandidate = sale ?? (current > 0 ? current : null);
+    if (discountedCandidate !== null) {
+      const inferredOriginal = discountedCandidate / (1 - pct / 100);
+      if (Number.isFinite(inferredOriginal) && inferredOriginal > discountedCandidate) {
+        original = inferredOriginal;
+        // keep sale as the discounted candidate if sale wasn't explicitly provided
+        if (sale === null) sale = discountedCandidate;
+      }
+    }
+  }
+
+  // Fallback: if we still don't have an original, use current price.
+  if (original === null) original = Number.isFinite(current) && current > 0 ? current : 0;
+
+  // Compute sale price if we have a percent but no explicit sale price.
+  if (sale === null && pct !== null && original > 0) {
+    const computed = original * (1 - pct / 100);
     if (Number.isFinite(computed) && computed > 0) sale = computed;
   }
 
-  if (sale !== null && (pct === null || pct <= 0) && p > 0 && sale < p) {
-    pct = Math.round(((p - sale) / p) * 100);
+  // If we have sale but no percent, derive percent.
+  if (sale !== null && (pct === null || pct <= 0) && original > 0 && sale < original) {
+    pct = Math.round(((original - sale) / original) * 100);
   }
 
-  const hasDiscount = sale !== null && p > 0 && sale < p && (pct ?? 0) > 0;
-  const savings = hasDiscount ? Math.max(0, p - sale) : 0;
+  const hasDiscount = sale !== null && original > 0 && sale < original && (pct ?? 0) > 0;
+  const savings = hasDiscount ? Math.max(0, original - sale) : 0;
 
   return {
     hasDiscount,
-    original: p,
+    original,
     discounted: hasDiscount ? sale : null,
     percentOff: hasDiscount ? pct : null,
     savings,
