@@ -3,11 +3,9 @@ const router = express.Router();
 const { db } = require("../db");
 const { reviews, orders, orderItems, users } = require("../db/schema");
 const { eq, and, desc, inArray } = require("drizzle-orm");
-// ✅ FIX: Import requireProductManagerOrAdmin
 const { authMiddleware, requireAdmin, optionalAuthMiddleware, requireProductManagerOrAdmin } = require("../middleware/auth");
 
-// GET ALL PENDING REVIEWS (Admin or Product Manager)
-// ✅ FIX: Allow Product Manager
+// GET ALL PENDING REVIEWS
 router.get("/pending", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const pendingReviews = await db.select().from(reviews).where(eq(reviews.status, "pending"));
@@ -18,7 +16,7 @@ router.get("/pending", authMiddleware, requireProductManagerOrAdmin, async (req,
   }
 });
 
-// GET REVIEWS FOR A PRODUCT (Public + Author + Admin Context)
+// GET REVIEWS FOR A PRODUCT
 router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
   try {
     const productIdNum = Number(req.params.productId);
@@ -28,8 +26,6 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
 
     const currentUserId = req.user ? req.user.id : -1;
     const role = req.user?.roleName;
-
-    // ✅ FIX: Product Managers should also see pending reviews
     const canSeeHidden = role === "admin" || role === "product_manager";
 
     const result = await db
@@ -49,6 +45,7 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
 
     const cleanReviews = result.map((r) => {
       const isOwner = r.userId === currentUserId;
+      // Hide review text if it's pending and you aren't the owner/admin
       const isHiddenPending = r.status === "pending" && !isOwner && !canSeeHidden;
 
       return {
@@ -57,7 +54,7 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
         userName: r.userName || "Anonymous",
         rating: r.rating,
         comment: isHiddenPending ? null : r.comment,
-        status: isHiddenPending ? "approved" : r.status, // Hide status if not authorized
+        status: isHiddenPending ? "approved" : r.status,
         createdAt: r.createdAt,
       };
     });
@@ -69,7 +66,8 @@ router.get("/product/:productId", optionalAuthMiddleware, async (req, res) => {
   }
 });
 
-// POST REVIEW (Protected)
+// POST REVIEW
+// ✅ FIXED: Auto-approve if no text comment
 router.post("/", authMiddleware, async (req, res) => {
   const { productId, rating, comment } = req.body;
   const userId = req.user.id;
@@ -101,29 +99,36 @@ router.post("/", authMiddleware, async (req, res) => {
     if (validItems.length === 0)
       return res.status(403).json({ message: "You have not purchased this product." });
 
-    // 2. Prevent duplicate reviews (Optional but recommended)
+    // 2. Prevent duplicate reviews
     const existingReview = await db.select().from(reviews).where(and(eq(reviews.userId, userId), eq(reviews.productId, productIdNum)));
     if (existingReview.length > 0) {
       return res.status(409).json({ message: "You have already reviewed this product." });
     }
 
+    // ✅ LOGIC: If comment is empty, AUTO-APPROVE. If text exists, PENDING.
+    const hasComment = comment && typeof comment === 'string' && comment.trim().length > 0;
+    const initialStatus = hasComment ? "pending" : "approved";
+
     await db.insert(reviews).values({
       userId,
       productId: productIdNum,
       rating: ratingNum,
-      comment: comment || null,
-      status: "pending",
+      comment: hasComment ? comment.trim() : null,
+      status: initialStatus,
     });
 
-    return res.status(201).json({ message: "Review submitted! Awaiting approval." });
+    const msg = initialStatus === "approved"
+        ? "Rating submitted!"
+        : "Review submitted! Awaiting approval.";
+
+    return res.status(201).json({ message: msg, status: initialStatus });
   } catch (err) {
     console.error("Review error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });
 
-// APPROVE REVIEW (Admin or Product Manager)
-// ✅ FIX: Allow Product Manager
+// APPROVE REVIEW (Keeps text, sets status approved)
 router.put("/:id/approve", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const reviewId = Number(req.params.id);
@@ -134,15 +139,17 @@ router.put("/:id/approve", authMiddleware, requireProductManagerOrAdmin, async (
   }
 });
 
-// DELETE REVIEW (Admin or Product Manager)
-// ✅ FIX: Allow Product Manager
+// DELETE REVIEW (Deletes text only, approves stars)
 router.delete("/:id", authMiddleware, requireProductManagerOrAdmin, async (req, res) => {
   try {
     const reviewId = Number(req.params.id);
-    await db.delete(reviews).where(eq(reviews.id, reviewId));
-    return res.json({ message: "Review deleted." });
+    await db.update(reviews)
+        .set({ comment: null, status: "approved" })
+        .where(eq(reviews.id, reviewId));
+
+    return res.json({ message: "Review text removed. Rating approved." });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to delete." });
+    return res.status(500).json({ message: "Failed to delete review text." });
   }
 });
 

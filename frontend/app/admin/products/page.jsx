@@ -8,6 +8,7 @@ import { clearStoredTokens } from "../../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+// ... (keep panelClass, chipBase, chip, fieldBase, textAreaBase, btnBase, btnPrimary, btnGhost, btnDanger as is)
 function panelClass() {
   return [
     "rounded-[34px]",
@@ -96,7 +97,7 @@ export default function AdminProductsPage() {
   // Toggle State
   const [showAddProduct, setShowAddProduct] = useState(false);
 
-  // ✅ NEW: Review Manager State
+  // Review Manager State
   const [showReviewManager, setShowReviewManager] = useState(false);
   const [pendingReviews, setPendingReviews] = useState([]);
 
@@ -218,8 +219,9 @@ export default function AdminProductsPage() {
     }
   }
 
+  // ✅ Updated: Calls DELETE but backend ensures only text is removed
   async function handleDeleteReview(id) {
-    if(!confirm("Delete this review permanently?")) return;
+    if(!confirm("Remove review text? (Star rating will remain publicly visible)")) return;
     const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     try {
       const res = await fetch(`${apiBase}/reviews/${id}`, {
@@ -228,12 +230,12 @@ export default function AdminProductsPage() {
       });
       if (res.ok) {
         setPendingReviews(prev => prev.filter(r => r.id !== id));
-        setMsg("Review deleted.");
+        setMsg("Review text removed, rating approved.");
       } else {
-        setMsg("Failed to delete.", true);
+        setMsg("Failed to remove review text.", true);
       }
     } catch (e) {
-      setMsg("Error deleting review.", true);
+      setMsg("Error handling review.", true);
     }
   }
 
@@ -576,7 +578,6 @@ export default function AdminProductsPage() {
   }
 
   if (!user || !canEditCatalog) {
-    const isSales = user?.roleName === "sales_manager";
     return (
         <div className="min-h-screen bg-black text-white">
           <div className="mx-auto max-w-6xl px-4 py-8">
@@ -590,8 +591,7 @@ export default function AdminProductsPage() {
               <p className="text-sm text-gray-300/70">
                 You need admin or product manager permissions to manage the catalog.
               </p>
-
-              {isSales && (
+              {user?.roleName === "sales_manager" && (
                   <DripLink
                       href="/sales-admin"
                       className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
@@ -599,7 +599,6 @@ export default function AdminProductsPage() {
                     Go to Sales Manager panel →
                   </DripLink>
               )}
-
               <DripLink
                   href="/"
                   className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
@@ -778,7 +777,7 @@ export default function AdminProductsPage() {
               </div>
           )}
 
-          {/* ✅ ADD PRODUCT FORM */}
+          {/* ADD PRODUCT FORM */}
           {showAddProduct && (
               <div className={panelClass() + " border-white/20"}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6">
@@ -796,7 +795,6 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-                  {/* Left Column */}
                   <div className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <input
@@ -845,7 +843,6 @@ export default function AdminProductsPage() {
                     />
                   </div>
 
-                  {/* Right Column */}
                   <div className="space-y-4 rounded-[28px] bg-white/5 p-5 border border-white/5">
                     <p className="text-[10px] font-semibold tracking-[0.26em] uppercase text-white/50 mb-2">
                       Required Details
@@ -923,7 +920,7 @@ export default function AdminProductsPage() {
               </div>
           )}
 
-          {/* Search */}
+          {/* Search & List */}
           <div className={panelClass()}>
             <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
               <p className="text-[11px] font-semibold tracking-[0.28em] uppercase text-gray-300/60">
@@ -938,7 +935,6 @@ export default function AdminProductsPage() {
             </div>
           </div>
 
-          {/* LIST WRAPPER */}
           {loading ? (
               <div className={panelClass()}>
                 <p className="text-sm text-gray-300/70">Loading catalog…</p>
@@ -956,7 +952,6 @@ export default function AdminProductsPage() {
                   return (
                       <div key={p.id} className={panelClass()}>
                         <div className="flex flex-col lg:flex-row gap-5">
-                          {/* ... existing product rendering ... */}
                           <div className="w-full lg:w-[220px] space-y-2">
                             <div className="w-full aspect-square rounded-[28px] overflow-hidden border border-white/10 bg-white/5">
                               {imageUrl ? (

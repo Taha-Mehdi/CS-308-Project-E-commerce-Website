@@ -55,84 +55,45 @@ function clamp(n, a, b) {
 }
 
 function getDiscountInfo(product, basePrice) {
-  // basePrice is whatever the backend returns as "price".
-  // Some backends return the *discounted* price in `price` and keep the original in a different field.
-  // This helper tries to reliably show: original (strikethrough) + discounted (current).
-
-  const current = Number(basePrice || 0);
-
-  const originalRaw =
-    product?.originalPrice ??
-    product?.original_price ??
-    product?.regularPrice ??
-    product?.regular_price ??
-    product?.compareAtPrice ??
-    product?.compare_at_price ??
-    product?.listPrice ??
-    product?.list_price ??
-    product?.mrp ??
-    product?.msrp;
+  const p = Number(basePrice || 0);
 
   const pctRaw =
-    product?.discountPercent ??
-    product?.discount_percentage ??
-    product?.discountPercentage ??
-    product?.discount_pct ??
-    product?.discountRate;
+      product?.discountPercent ??
+      product?.discount_percentage ??
+      product?.discountPercentage ??
+      product?.discount_pct ??
+      product?.discountRate;
 
   const saleRaw =
-    product?.discountedPrice ??
-    product?.discount_price ??
-    product?.discountPrice ??
-    product?.salePrice ??
-    product?.sale_price ??
-    product?.finalPrice ??
-    product?.final_price;
-
-  let original = Number(originalRaw);
-  if (!Number.isFinite(original) || original <= 0) original = null;
+      product?.discountedPrice ??
+      product?.discount_price ??
+      product?.discountPrice ??
+      product?.salePrice ??
+      product?.sale_price ??
+      product?.finalPrice ??
+      product?.final_price;
 
   let pct = Number(pctRaw);
-  if (!Number.isFinite(pct) || pct <= 0) pct = null;
+  if (!Number.isFinite(pct)) pct = null;
 
   let sale = Number(saleRaw);
-  if (!Number.isFinite(sale) || sale <= 0) sale = null;
+  if (!Number.isFinite(sale)) sale = null;
 
-  // If backend already applied discount into `price` AND also provides a discount percent,
-  // it's common that `price === discountedPrice` (or discountedPrice is missing).
-  // In that case, infer original price from the discounted price and percent.
-  if (original === null && pct !== null) {
-    const discountedCandidate = sale ?? (current > 0 ? current : null);
-    if (discountedCandidate !== null) {
-      const inferredOriginal = discountedCandidate / (1 - pct / 100);
-      if (Number.isFinite(inferredOriginal) && inferredOriginal > discountedCandidate) {
-        original = inferredOriginal;
-        // keep sale as the discounted candidate if sale wasn't explicitly provided
-        if (sale === null) sale = discountedCandidate;
-      }
-    }
-  }
-
-  // Fallback: if we still don't have an original, use current price.
-  if (original === null) original = Number.isFinite(current) && current > 0 ? current : 0;
-
-  // Compute sale price if we have a percent but no explicit sale price.
-  if (sale === null && pct !== null && original > 0) {
-    const computed = original * (1 - pct / 100);
+  if (pct !== null && pct > 0 && p > 0) {
+    const computed = p * (1 - pct / 100);
     if (Number.isFinite(computed) && computed > 0) sale = computed;
   }
 
-  // If we have sale but no percent, derive percent.
-  if (sale !== null && (pct === null || pct <= 0) && original > 0 && sale < original) {
-    pct = Math.round(((original - sale) / original) * 100);
+  if (sale !== null && (pct === null || pct <= 0) && p > 0 && sale < p) {
+    pct = Math.round(((p - sale) / p) * 100);
   }
 
-  const hasDiscount = sale !== null && original > 0 && sale < original && (pct ?? 0) > 0;
-  const savings = hasDiscount ? Math.max(0, original - sale) : 0;
+  const hasDiscount = sale !== null && p > 0 && sale < p && (pct ?? 0) > 0;
+  const savings = hasDiscount ? Math.max(0, p - sale) : 0;
 
   return {
     hasDiscount,
-    original,
+    original: p,
     discounted: hasDiscount ? sale : null,
     percentOff: hasDiscount ? pct : null,
     savings,
@@ -214,17 +175,12 @@ function StatLine({ label, value }) {
   );
 }
 
-/* ✅ FIXED: Logic to hide text for public */
 function ReviewCard({ r }) {
   const pending = String(r?.status || "").toLowerCase() === "pending";
   const name = r?.userName || "User";
   const date = formatStableDate(r?.createdAt);
   const rating = Number(r?.rating || 0);
   const comment = r?.comment;
-
-  // Logic:
-  // 1. If it's your review (pending is true), show the comment.
-  // 2. If it's a public review (backend sends 'approved' + null comment), show nothing.
 
   const showCommentSection = comment || pending;
 
@@ -254,7 +210,6 @@ function ReviewCard({ r }) {
           </div>
         </div>
 
-        {/* Only show this block if there is actual text OR if it's pending (author view) */}
         {showCommentSection && (
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 p-4">
               <p className="text-[13px] leading-relaxed text-gray-200/85">
@@ -357,7 +312,6 @@ export default function ProductDetailPage() {
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
-  const [confirmDelivery, setConfirmDelivery] = useState(false);
 
   const [activeTab, setActiveTab] = useState("story");
   const topRef = useRef(null);
@@ -616,14 +570,9 @@ export default function ProductDetailPage() {
       setMessageType("error");
       return;
     }
-    if (!confirmDelivery || !reviewText.trim()) {
-      setMessage("Please complete all fields.");
-      setMessageType("error");
-      return;
-    }
 
     setSubmitting(true);
-    setMessage(""); // Clear previous
+    setMessage("");
 
     try {
       const res = await fetch(`${apiBase}/reviews`, {
@@ -632,7 +581,11 @@ export default function ProductDetailPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
-        body: JSON.stringify({ productId, rating, comment: reviewText }),
+        body: JSON.stringify({
+          productId,
+          rating,
+          comment: reviewText.trim() || null
+        }),
       });
 
       const data = await res.json();
@@ -643,22 +596,24 @@ export default function ProductDetailPage() {
         return;
       }
 
+      // ✅ FIX: Use status from backend logic
+      const newStatus = data.status || (reviewText.trim() ? "pending" : "approved");
+
       setReviews((r) => [
         {
           id: `local-${Date.now()}`,
           userName: user.fullName || "You",
           rating,
-          comment: reviewText,
-          status: "pending",
+          comment: reviewText.trim() || null,
+          status: newStatus,
           createdAt: new Date().toISOString(),
         },
         ...r,
       ]);
 
       setReviewText("");
-      setConfirmDelivery(false);
       setRating(5);
-      setMessage("Review submitted (pending approval).");
+      setMessage(newStatus === "approved" ? "Rating submitted!" : "Review submitted (pending approval).");
       setMessageType("success");
       setActiveTab("reviews");
       scrollToTabs();
@@ -1172,47 +1127,13 @@ export default function ProductDetailPage() {
                           </div>
 
                           <div className="space-y-2">
-                            <p className="text-[10px] uppercase tracking-[0.22em] text-gray-300/60">
-                              Delivery confirmation
-                            </p>
-
-                            <label
-                                className={[
-                                  "flex items-start gap-3",
-                                  "rounded-[22px] border border-white/10 bg-black/20 p-4",
-                                  "hover:bg-black/25 transition",
-                                  !user ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
-                                ].join(" ")}
-                            >
-                        <span className="relative mt-0.5">
-                          <input
-                              type="checkbox"
-                              checked={confirmDelivery}
-                              onChange={(e) => setConfirmDelivery(e.target.checked)}
-                              disabled={!user}
-                              className="peer sr-only"
-                          />
-                          <span className="block size-5 rounded-md border border-white/20 bg-white/5 shadow-[0_10px_30px_rgba(0,0,0,0.20)] peer-checked:bg-white peer-checked:border-white" />
-                          <span className="pointer-events-none absolute inset-0 grid place-items-center text-black opacity-0 peer-checked:opacity-100 transition">
-                            ✓
-                          </span>
-                        </span>
-
-                              <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-white">
-                            I confirm I received this product
-                          </span>
-                          <span className="mt-1 block text-[12px] text-gray-300/70">
-                            Required to submit a review. Helps keep reviews trustworthy.
-                          </span>
-                        </span>
-                            </label>
+                            {/* ✅ REMOVED: Delivery confirmation checkbox */}
                           </div>
                         </div>
 
                         <div className="mt-4">
                           <p className="text-[10px] uppercase tracking-[0.22em] text-gray-300/60">
-                            Your review
+                            Your review <span className="opacity-50 lowercase tracking-normal">(optional)</span>
                           </p>
                           <textarea
                               rows={4}
