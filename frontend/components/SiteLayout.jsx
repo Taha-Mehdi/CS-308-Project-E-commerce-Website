@@ -1,11 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import DripLink from "./DripLink";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+function safeParseJsonArray(raw, fallback = []) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function sumQuantities(items) {
+  if (!Array.isArray(items)) return 0;
+  let total = 0;
+  for (const it of items) {
+    const q = Number(it?.quantity ?? 1);
+    total += Number.isFinite(q) && q > 0 ? q : 0;
+  }
+  return total;
+}
+
+function getGuestCartCount() {
+  if (typeof window === "undefined") return 0;
+  const cart = safeParseJsonArray(window.localStorage.getItem("guestCart") || "[]", []);
+  return sumQuantities(cart);
+}
 
 export default function SiteLayout({ children }) {
   const { user, logout } = useAuth();
@@ -14,59 +39,85 @@ export default function SiteLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // -------------------------
-  // Cart count (JSON-safe) + updates
+  // Cart count (guest + logged-in)
   // -------------------------
-  useEffect(() => {
-    async function loadCartCount() {
+  const loadCartCount = useCallback(async () => {
+    try {
+      // If no token => guest cart badge should still work
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      if (!token) {
+        setCartCount(getGuestCartCount());
+        return;
+      }
+
+      const res = await fetch(`${apiBase}/cart`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        // If auth fails / server unreachable, fall back to guest cart
+        // (also helps after logout until state settles)
+        setCartCount(getGuestCartCount());
+        return;
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        setCartCount(getGuestCartCount());
+        return;
+      }
+
+      let data;
       try {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-        if (!token) {
-          setCartCount(0);
-          return;
-        }
-
-        const res = await fetch(`${apiBase}/cart`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
-          setCartCount(0);
-          return;
-        }
-
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          setCartCount(0);
-          return;
-        }
-
-        let data;
-        try {
-          data = await res.json();
-        } catch {
-          setCartCount(0);
-          return;
-        }
-
-        setCartCount(Array.isArray(data) ? data.length : 0);
+        data = await res.json();
       } catch {
+        setCartCount(getGuestCartCount());
+        return;
+      }
+
+      // Prefer quantity sum if items have quantity, otherwise fallback to length
+      if (Array.isArray(data)) {
+        const qtySum = sumQuantities(data);
+        setCartCount(qtySum > 0 ? qtySum : data.length);
+      } else {
         setCartCount(0);
       }
+    } catch {
+      // Network issues => don't break badge; show guest cart if present
+      setCartCount(getGuestCartCount());
     }
+  }, []);
 
+  // Load on mount + whenever auth user changes (login/logout)
+  useEffect(() => {
     loadCartCount();
+  }, [loadCartCount, user]);
+
+  // Listen for cart updates + storage changes (multi-tab)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
     function handleUpdated() {
       loadCartCount();
     }
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("cart-updated", handleUpdated);
-      return () => window.removeEventListener("cart-updated", handleUpdated);
+    function handleStorage(e) {
+      if (e.key === "guestCart" || e.key === "token") {
+        loadCartCount();
+      }
     }
-  }, []);
+
+    window.addEventListener("cart-updated", handleUpdated);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("cart-updated", handleUpdated);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [loadCartCount]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -80,16 +131,15 @@ export default function SiteLayout({ children }) {
       { href: "/cart", label: "Bag" },
       { href: "/orders", label: "Orders", requiresAuth: true },
 
-
       {
         label: "Panel",
         requiresAdmin: true,
         getHref: (u) =>
-            u?.roleName === "product_manager"
-                ? "/admin"
-                : u?.roleName === "sales_manager"
-                    ? "/sales-admin"
-                    : null,
+          u?.roleName === "product_manager"
+            ? "/admin"
+            : u?.roleName === "sales_manager"
+              ? "/sales-admin"
+              : null,
       },
     ],
     []
@@ -193,19 +243,16 @@ export default function SiteLayout({ children }) {
       if (link.requiresAdmin) {
         if (!user) return null;
 
-        const allowed = ["product_manager", "sales_manager"].includes(user.roleName);
+        const allowed = ["product_manager", "sales_manager"].includes(
+          user.roleName
+        );
         if (!allowed) return null;
 
         const href = link.getHref(user);
         if (!href) return null;
 
         return (
-          <DockLink
-            key={href}
-            href={href}
-            label={link.label}
-            onClick={onClick}
-          />
+          <DockLink key={href} href={href} label={link.label} onClick={onClick} />
         );
       }
 
@@ -295,15 +342,8 @@ export default function SiteLayout({ children }) {
                   </>
                 ) : (
                   <>
-                    <ActionPill
-                      href="/account"
-                      label={user.fullName || "Account"}
-                    />
-                    <ActionPill
-                      label="Logout"
-                      variant="primary"
-                      onClick={logout}
-                    />
+                    <ActionPill href="/account" label={user.fullName || "Account"} />
+                    <ActionPill label="Logout" variant="primary" onClick={logout} />
                   </>
                 )}
               </div>

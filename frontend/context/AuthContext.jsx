@@ -13,6 +13,33 @@ function isCustomerRole(u) {
   return getRoleName(u) === "customer";
 }
 
+function safeParseArray(raw) {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeGuestCart(rawItems) {
+  // Aggregate quantities by productId, ignore invalid rows
+  const map = new Map();
+  for (const it of rawItems) {
+    const pid = Number(it?.productId);
+    if (!Number.isInteger(pid) || pid <= 0) continue;
+
+    const qty = Number(it?.quantity);
+    const q = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
+
+    map.set(pid, (map.get(pid) || 0) + q);
+  }
+  return Array.from(map.entries()).map(([productId, quantity]) => ({
+    productId,
+    quantity,
+  }));
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
@@ -32,7 +59,6 @@ export function AuthProvider({ children }) {
       if (storedToken && storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
-
           if (parsedUser && typeof parsedUser === "object") {
             setToken(storedToken);
             setUser(parsedUser);
@@ -48,62 +74,68 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Helper: merge guest cart into server cart after login
+  /**
+   * Merge guestCart into authenticated cart.
+   *
+   * Conflict-safe behavior:
+   * - Aggregates duplicate productIds (sum quantities)
+   * - Attempts to sync each item
+   * - Removes only successfully-synced items from guestCart
+   * - Leaves failed items in guestCart (so nothing is lost)
+   */
   async function mergeGuestCartIntoServer(currentUser) {
     if (typeof window === "undefined") return;
 
-    // ✅ Only customers should have carts / orders
-    if (!isCustomerRole(currentUser)) {
-      // Keep guest cart for later in case they log in as customer later
-      return;
-    }
+    // Only customers should own carts
+    if (!isCustomerRole(currentUser)) return;
+
+    const raw = localStorage.getItem("guestCart");
+    if (!raw) return;
+
+    // Prevent double-merge loops in edge cases
+    // (e.g. login called twice quickly)
+    if (localStorage.getItem("guestCartMergeInProgress") === "1") return;
+
+    const guestCartRaw = safeParseArray(raw);
+    const guestItems = normalizeGuestCart(guestCartRaw);
+    if (guestItems.length === 0) return;
+
+    localStorage.setItem("guestCartMergeInProgress", "1");
 
     try {
-      const raw = localStorage.getItem("guestCart");
-      if (!raw) return;
+      const successes = new Set(); // productIds successfully merged
 
-      let guestCart;
-      try {
-        guestCart = JSON.parse(raw);
-      } catch {
-        guestCart = null;
-      }
-
-      if (!Array.isArray(guestCart) || guestCart.length === 0) return;
-
-      // Add each item to backend cart
-      for (const item of guestCart) {
-        if (!item || typeof item.productId !== "number") continue;
-        const qty = Number(item.quantity) || 1;
-
+      for (const item of guestItems) {
         try {
-          await addToCartApi({
-            productId: item.productId,
-            quantity: qty,
-          });
+          // addToCartApi should increment quantity on server-side
+          await addToCartApi({ productId: item.productId, quantity: item.quantity });
+          successes.add(item.productId);
         } catch (err) {
-          // ✅ If role/cart forbidden, stop spamming console and stop merging
-          if (err?.status === 403) return;
-          if (err?.status === 401) return;
-          // For other issues, keep it quiet (optional: console.warn)
-          console.warn("Failed to sync guest cart item", item, err);
+          // If auth/role fails, stop merging (keep guest cart intact)
+          if (err?.status === 401 || err?.status === 403) break;
+
+          // For other errors (network, product missing, etc.), keep going
+          console.warn("Guest cart sync failed for", item, err);
         }
       }
 
-      // Clear guest cart once merged
-      localStorage.removeItem("guestCart");
-      window.dispatchEvent(new Event("cart-updated"));
-    } catch (err) {
-      console.error("mergeGuestCartIntoServer error:", err);
+      if (successes.size > 0) {
+        // Remove only successfully-merged items; keep failed items for safety
+        const remaining = guestItems.filter((it) => !successes.has(it.productId));
+
+        if (remaining.length === 0) localStorage.removeItem("guestCart");
+        else localStorage.setItem("guestCart", JSON.stringify(remaining));
+
+        window.dispatchEvent(new Event("cart-updated"));
+      }
+    } finally {
+      localStorage.removeItem("guestCartMergeInProgress");
     }
   }
 
   function login(newToken, newUser) {
     if (!newToken || !newUser || typeof newUser !== "object") {
-      console.warn("AuthContext.login received invalid data:", {
-        newToken,
-        newUser,
-      });
+      console.warn("AuthContext.login received invalid data:", { newToken, newUser });
       return;
     }
 
@@ -115,7 +147,7 @@ export function AuthProvider({ children }) {
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
 
-        // ✅ merge only if customer
+        // ✅ Merge guest cart after auth is stored (api.js reads token from storage)
         mergeGuestCartIntoServer(newUser);
       }
     } catch (err) {
@@ -134,6 +166,7 @@ export function AuthProvider({ children }) {
       }
 
       clearStoredTokens();
+      window.dispatchEvent(new Event("cart-updated"));
     } catch (err) {
       console.error("AuthContext.logout error:", err);
     }
@@ -152,8 +185,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 }
