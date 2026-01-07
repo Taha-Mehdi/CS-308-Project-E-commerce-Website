@@ -11,7 +11,7 @@ export default function ProductCard({
   product,
   wishlistIds,
   onWishlistToggle,
-  wishToggling
+  wishToggling,
 }) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
@@ -35,166 +35,166 @@ export default function ProductCard({
 
   const price = round2(priceNum).toFixed(2);
   const original = hasDiscount ? round2(originalNum).toFixed(2) : null;
-  const badgeRate = hasDiscount ? round2(rateNum).toFixed(0) : null;
 
-  const isWishlisted = wishlistIds ? wishlistIds.has(Number(product.id)) : false;
+  const isWishlisted = wishlistIds ? wishlistIds.has(Number(product?.id)) : false;
 
   const handleWishlistClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onWishlistToggle) {
-      onWishlistToggle(product.id);
-    }
+    onWishlistToggle?.(product.id);
   };
 
   return (
-    <div className="relative group">
+    <div className="group min-w-0">
       <Link
         href={`/products/${product.id}`}
         className="
-          block overflow-hidden rounded-[28px]
+          relative block min-w-0 overflow-hidden
+          rounded-[26px]
           border border-border
-          bg-[color-mix(in_oklab,var(--background)_78%,black_22%)]
-          shadow-[0_18px_55px_rgba(0,0,0,0.45)]
-          transition-transform duration-200
-          hover:-translate-y-1.5
+          bg-surface
+          shadow-[0_18px_55px_rgba(0,0,0,0.35)]
+          transition-transform duration-300
+          hover:-translate-y-1
           focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--drip-accent)]
         "
       >
-      {/* Soft gradient glow */}
-      <div
-        className="
-          pointer-events-none absolute inset-0 opacity-0
-          group-hover:opacity-100 transition-opacity
-          bg-[radial-gradient(900px_circle_at_20%_10%,rgba(168,85,247,0.28),transparent_42%),radial-gradient(900px_circle_at_80%_30%,rgba(251,113,133,0.22),transparent_48%)]
-        "
-      />
+        {/* Hover glow */}
+        <div
+          className="
+            pointer-events-none absolute inset-0 opacity-0
+            group-hover:opacity-100 transition-opacity duration-300
+            bg-[radial-gradient(900px_circle_at_20%_10%,rgba(168,85,247,0.18),transparent_45%),radial-gradient(900px_circle_at_85%_30%,rgba(251,113,133,0.14),transparent_50%)]
+          "
+          aria-hidden="true"
+        />
 
-      {/* IMAGE */}
-      <div className="relative aspect-[3/4] overflow-hidden">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={product.name || "Sneaks-up drop"}
-            className="
-              h-full w-full object-cover
-              transition-transform duration-500
-              group-hover:scale-[1.08]
-            "
-          />
-        ) : (
-          <div className="h-full w-full grid place-items-center bg-black/25">
-            <span className="text-[11px] uppercase tracking-[0.28em] text-gray-300/70">
-              SNEAKS-UP
-            </span>
-          </div>
-        )}
-
-        {/* Image fade */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-
-        {/* Price chip */}
-        <div className="absolute left-4 top-4 space-y-2">
-          <div
-            className="
-              inline-flex items-center gap-2 rounded-full px-3 py-1.5
-              border border-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]
-              bg-black/55 backdrop-blur
-              shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-            "
-          >
-            <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent-2)]" />
-
-            <span className="text-[12px] font-semibold text-white">${price}</span>
-
-            {hasDiscount && (
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-200/85">
-                <span className="mx-1 opacity-50">·</span>
-                <span className="line-through opacity-70">${original}</span>
+        {/* IMAGE (shorter) */}
+        <div className="relative aspect-[4/5] overflow-hidden bg-black/10">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={product?.name || "Product"}
+              loading="lazy"
+              decoding="async"
+              className="
+                absolute inset-0 h-full w-full
+                object-cover object-center
+                transition-transform duration-700 ease-out
+                group-hover:scale-[1.05]
+              "
+            />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center bg-black/20">
+              <span className="text-[11px] uppercase tracking-[0.28em] text-gray-300/70">
+                SNEAKS-UP
               </span>
+            </div>
+          )}
+
+          {/* lighter fade */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+
+          {/* Price + wishlist (✅ same height) */}
+          <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2">
+            {/* ✅ Price pill is h-9 to match wishlist */}
+            <div
+              className="
+                min-w-0 inline-flex h-9 items-center gap-2
+                rounded-full px-3
+                border border-white/12
+                bg-black/45 backdrop-blur
+                shadow-[0_10px_30px_rgba(0,0,0,0.30)]
+              "
+            >
+              <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent-2)]" />
+              <span className="min-w-0 truncate text-[11px] font-semibold text-white">
+                ${price}
+                {hasDiscount && (
+                  <span className="ml-2 text-[10px] text-gray-200/70 line-through">
+                    ${original}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {onWishlistToggle && (
+              <button
+                type="button"
+                onClick={handleWishlistClick}
+                disabled={wishToggling}
+                className={[
+                  "shrink-0 grid place-items-center rounded-full",
+                  "h-9 w-9",
+                  "border border-white/12 bg-black/45 backdrop-blur",
+                  "shadow-[0_10px_30px_rgba(0,0,0,0.30)]",
+                  "transition active:scale-95",
+                  isWishlisted
+                    ? "text-white bg-rose-500/85 hover:bg-rose-600/85 border-rose-400/30"
+                    : "text-white/80 hover:text-white hover:bg-black/60",
+                  wishToggling && "opacity-50 cursor-not-allowed",
+                ].join(" ")}
+                aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill={isWishlisted ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                  />
+                </svg>
+              </button>
             )}
           </div>
 
-          {/* Discount badge */}
-          {hasDiscount && (
+          {/* Stock */}
+          <div className="absolute left-3 bottom-3">
+            <StockBadge stock={product?.stock} tone="muted" />
+          </div>
+        </div>
+
+        {/* TEXT */}
+        <div className="min-w-0 px-4 sm:px-5 pt-4 pb-5">
+          <h3 className="min-w-0 truncate text-[15px] sm:text-[16px] lg:text-[17px] font-semibold text-foreground">
+            {product?.name || "Untitled"}
+          </h3>
+
+          {product?.description ? (
+            <p className="mt-2 min-w-0 line-clamp-2 text-[12px] leading-relaxed text-gray-300/80">
+              {product.description}
+            </p>
+          ) : (
+            <p className="mt-2 text-[12px] text-gray-300/50">No description.</p>
+          )}
+
+          <div className="mt-3 h-[2px] w-full rounded-full bg-white/10 overflow-hidden">
             <div
               className="
-                inline-flex items-center gap-2 rounded-full px-3 py-1
-                border border-rose-500/30 bg-rose-500/10 backdrop-blur
-                text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-200
+                h-full w-[34%]
+                bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
+                opacity-70 transition-all duration-500
+                group-hover:w-[58%] group-hover:opacity-100
               "
-            >
-              <span className="inline-block size-1.5 rounded-full bg-rose-300" />
-              {badgeRate}% OFF
-            </div>
-          )}
-        </div>
-
-        {/* Stock */}
-        <div className="absolute left-4 bottom-4">
-          <StockBadge stock={product.stock} tone="muted" />
-        </div>
-
-        {/* Wishlist button */}
-        {onWishlistToggle && (
-          <div className="absolute right-4 bottom-4">
-            <button
-              type="button"
-              onClick={handleWishlistClick}
-              disabled={wishToggling}
-              className={[
-                "p-2.5 rounded-full backdrop-blur transition-all active:scale-95",
-                "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
-                isWishlisted
-                  ? "bg-rose-500/90 border border-rose-400/30 text-white hover:bg-rose-600/90"
-                  : "bg-black/60 border border-white/15 text-white/80 hover:bg-black/80 hover:text-white",
-                wishToggling && "opacity-50 cursor-not-allowed"
-              ].join(" ")}
-              aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-            >
-              <svg
-                className="w-4 h-4"
-                fill={isWishlisted ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                />
-              </svg>
-            </button>
+            />
           </div>
-        )}
-      </div>
 
-      {/* TEXT */}
-      <div className="px-5 pt-4 pb-5">
-        <h3 className="text-[15px] sm:text-[16px] font-semibold text-foreground line-clamp-1">
-          {product.name}
-        </h3>
-
-        {product.description && (
-          <p className="mt-2 text-[12px] leading-relaxed text-gray-300/80 line-clamp-2">
-            {product.description}
-          </p>
-        )}
-
-        {/* Minimal affordance line */}
-        <div className="mt-3 h-[2px] w-full rounded-full bg-white/10 overflow-hidden">
-          <div
-            className="
-              h-full w-[28%]
-              bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
-              opacity-70 transition-all duration-500
-              group-hover:w-[48%] group-hover:opacity-100
-            "
-          />
+          <div className="mt-3 flex items-center justify-between text-[11px] text-gray-300/60">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--drip-accent)] opacity-60" />
+              See more
+            </span>
+            <span className="opacity-70 group-hover:opacity-100 transition-opacity">
+              View →
+            </span>
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
     </div>
   );
 }

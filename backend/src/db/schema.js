@@ -100,7 +100,7 @@ const cartItems = pgTable(
   })
 );
 
-// WISHLIST ITEMS 
+// WISHLIST ITEMS
 const wishlistItems = pgTable(
   "wishlist_items",
   {
@@ -118,15 +118,25 @@ const wishlistItems = pgTable(
 );
 
 // REVIEWS
-const reviews = pgTable("reviews", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
-  productId: integer("product_id").notNull().references(() => products.id),
-  rating: integer("rating").notNull(),
-  comment: text("comment"),
-  status: text("status").notNull().default("pending"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+const reviews = pgTable(
+  "reviews",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    productId: integer("product_id").notNull().references(() => products.id),
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    status: text("status").notNull().default("pending"), // pending | approved | rejected
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    // ✅ Enforce: a user can only have 1 review per product
+    uniqueUserProductReview: uniqueIndex("unique_user_product_review").on(
+      table.userId,
+      table.productId
+    ),
+  })
+);
 
 module.exports = {
   roles,

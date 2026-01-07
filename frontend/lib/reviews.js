@@ -31,6 +31,11 @@ export function getAllReviews() {
   return loadAll();
 }
 
+/**
+ * ✅ Enforced rule:
+ * A user cannot add more than 1 review per product.
+ * If they try, return null (caller can show message).
+ */
 export function addReview({
   productId,
   rating,
@@ -39,14 +44,24 @@ export function addReview({
   productName,
 }) {
   const all = loadAll();
+  const pid = Number(productId);
+  const email = (userEmail || "guest").toLowerCase().trim();
+
+  const already = all.some(
+    (r) => r.productId === pid && String(r.userEmail || "").toLowerCase().trim() === email
+  );
+  if (already) {
+    return null;
+  }
+
   const id = Date.now() + Math.floor(Math.random() * 1e6);
 
   const review = {
     id,
-    productId: Number(productId),
+    productId: pid,
     rating: Number(rating),
     comment,
-    userEmail: userEmail || "guest",
+    userEmail: email,
     productName: productName || "",
     status: "pending",
     createdAt: new Date().toISOString(),

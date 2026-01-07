@@ -5,7 +5,11 @@ import SiteLayout from "../../components/SiteLayout";
 import DripLink from "../../components/DripLink";
 import StockBadge from "../../components/StockBadge";
 import { useAuth } from "../../context/AuthContext";
-import { getWishlistApi, addToWishlistApi, removeFromWishlistApi } from "../../lib/api";
+import {
+  getWishlistApi,
+  addToWishlistApi,
+  removeFromWishlistApi,
+} from "../../lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -49,8 +53,18 @@ function formatMoney(value) {
  */
 function getPricing(product) {
   const price = Number(product?.price);
-  const originalCandidate = Number(product?.originalPrice ?? product?.basePrice ?? product?.priceBeforeDiscount ?? product?.compareAtPrice);
-  const discountedCandidate = Number(product?.discountedPrice ?? product?.salePrice ?? product?.finalPrice ?? product?.priceAfterDiscount);
+  const originalCandidate = Number(
+    product?.originalPrice ??
+      product?.basePrice ??
+      product?.priceBeforeDiscount ??
+      product?.compareAtPrice
+  );
+  const discountedCandidate = Number(
+    product?.discountedPrice ??
+      product?.salePrice ??
+      product?.finalPrice ??
+      product?.priceAfterDiscount
+  );
 
   const discountPct = Number(
     product?.discountPercentage ??
@@ -61,42 +75,87 @@ function getPricing(product) {
   );
 
   // If backend gives both original and discounted explicitly
-  if (Number.isFinite(originalCandidate) && originalCandidate > 0 && Number.isFinite(discountedCandidate) && discountedCandidate > 0) {
+  if (
+    Number.isFinite(originalCandidate) &&
+    originalCandidate > 0 &&
+    Number.isFinite(discountedCandidate) &&
+    discountedCandidate > 0
+  ) {
     const original = originalCandidate;
     const final = Math.min(discountedCandidate, originalCandidate);
-    const pct = original > 0 ? Math.round(((original - final) / original) * 100) : 0;
-    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+    const pct =
+      original > 0 ? Math.round(((original - final) / original) * 100) : 0;
+    return {
+      originalPrice: original,
+      finalPrice: final,
+      hasDiscount: final < original,
+      discountPercent: pct,
+    };
   }
 
   // If backend gives original + percent
-  if (Number.isFinite(originalCandidate) && originalCandidate > 0 && Number.isFinite(discountPct) && discountPct > 0) {
+  if (
+    Number.isFinite(originalCandidate) &&
+    originalCandidate > 0 &&
+    Number.isFinite(discountPct) &&
+    discountPct > 0
+  ) {
     const original = originalCandidate;
     const final = Math.max(0, original * (1 - discountPct / 100));
     const pct = Math.round(discountPct);
-    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+    return {
+      originalPrice: original,
+      finalPrice: final,
+      hasDiscount: final < original,
+      discountPercent: pct,
+    };
   }
 
   // If backend gives price + percent (treat price as original)
-  if (Number.isFinite(price) && price > 0 && Number.isFinite(discountPct) && discountPct > 0) {
+  if (
+    Number.isFinite(price) &&
+    price > 0 &&
+    Number.isFinite(discountPct) &&
+    discountPct > 0
+  ) {
     const original = price;
     const final = Math.max(0, original * (1 - discountPct / 100));
     const pct = Math.round(discountPct);
-    return { originalPrice: original, finalPrice: final, hasDiscount: final < original, discountPercent: pct };
+    return {
+      originalPrice: original,
+      finalPrice: final,
+      hasDiscount: final < original,
+      discountPercent: pct,
+    };
   }
 
   // If backend gives only discounted price (rare), prefer it but try to use compareAtPrice/original if present
-  if (Number.isFinite(price) && price > 0 && Number.isFinite(originalCandidate) && originalCandidate > price) {
+  if (
+    Number.isFinite(price) &&
+    price > 0 &&
+    Number.isFinite(originalCandidate) &&
+    originalCandidate > price
+  ) {
     const original = originalCandidate;
     const final = price;
     const pct = Math.round(((original - final) / original) * 100);
-    return { originalPrice: original, finalPrice: final, hasDiscount: true, discountPercent: pct };
+    return {
+      originalPrice: original,
+      finalPrice: final,
+      hasDiscount: true,
+      discountPercent: pct,
+    };
   }
 
   // Default: no discount
   const final = Number.isFinite(price) && price > 0 ? price : 0;
-  return { originalPrice: final, finalPrice: final, hasDiscount: false, discountPercent: 0 };
+  return {
+    originalPrice: final,
+    finalPrice: final,
+    hasDiscount: false,
+    discountPercent: 0,
+  };
 }
-
 
 /**
  * Premium custom dropdown:
@@ -149,7 +208,9 @@ function GlassSelect({ value, onChange, options, widthClass = "w-[185px]" }) {
                   }}
                   className={[
                     "w-full text-left px-3 py-2 rounded-xl text-[12px] font-medium transition",
-                    active ? "bg-black text-white" : "hover:bg-black/10 text-black/80",
+                    active
+                      ? "bg-black text-white"
+                      : "hover:bg-black/10 text-black/80",
                   ].join(" ")}
                 >
                   {opt.label}
@@ -283,14 +344,17 @@ export default function ProductsPage() {
     }
 
     const min = parseFloat(minPrice);
-    if (!Number.isNaN(min)) list = list.filter((p) => getPricing(p).finalPrice >= min);
+    if (!Number.isNaN(min))
+      list = list.filter((p) => getPricing(p).finalPrice >= min);
 
     const max = parseFloat(maxPrice);
-    if (!Number.isNaN(max)) list = list.filter((p) => getPricing(p).finalPrice <= max);
+    if (!Number.isNaN(max))
+      list = list.filter((p) => getPricing(p).finalPrice <= max);
 
     if (categoryFilter !== "all") {
       const catId = Number(categoryFilter);
-      if (!Number.isNaN(catId)) list = list.filter((p) => Number(p?.categoryId) === catId);
+      if (!Number.isNaN(catId))
+        list = list.filter((p) => Number(p?.categoryId) === catId);
     }
 
     switch (sortBy) {
@@ -345,7 +409,9 @@ export default function ProductsPage() {
     try {
       if (currentlyWished) await removeFromWishlistApi(productIdNum);
       else await addToWishlistApi(productIdNum);
-      setMessage(currentlyWished ? "Removed from wishlist." : "Added to wishlist.");
+      setMessage(
+        currentlyWished ? "Removed from wishlist." : "Added to wishlist."
+      );
     } catch {
       setWishlistIds((prev) => {
         const next = new Set(prev);
@@ -403,7 +469,10 @@ export default function ProductsPage() {
 
       const res = await fetch(`${apiBase}/cart/add`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ productId, quantity: 1 }),
       });
 
@@ -553,7 +622,9 @@ export default function ProductsPage() {
           </div>
         ) : filteredAndSorted.length === 0 ? (
           <div className="rounded-[30px] border border-white/10 bg-white/[0.03] backdrop-blur p-10 text-center shadow-[0_18px_70px_rgba(0,0,0,0.35)]">
-            <p className="text-sm text-gray-200/80">Nothing matches these filters.</p>
+            <p className="text-sm text-gray-200/80">
+              Nothing matches these filters.
+            </p>
             <button
               type="button"
               onClick={handleResetFilters}
@@ -565,11 +636,14 @@ export default function ProductsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredAndSorted.map((product) => {
-              const { originalPrice, finalPrice, hasDiscount, discountPercent } = getPricing(product);
+              const { originalPrice, finalPrice, hasDiscount, discountPercent } =
+                getPricing(product);
               const stock = Number(product?.stock || 0);
               const isSoldOut = stock <= 0;
 
-              const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
+              const imageUrl = product?.imageUrl
+                ? `${apiBase}${product.imageUrl}`
+                : null;
               const isWishlisted = wishlistIds.has(Number(product.id));
 
               return (
@@ -616,9 +690,13 @@ export default function ProductsPage() {
                           isWishlisted
                             ? "bg-rose-500/90 border border-rose-400/30 text-white hover:bg-rose-600/90"
                             : "bg-black/60 border border-white/15 text-white/80 hover:bg-black/80 hover:text-white",
-                          wishToggling && "opacity-50 cursor-not-allowed"
+                          wishToggling && "opacity-50 cursor-not-allowed",
                         ].join(" ")}
-                        aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                        aria-label={
+                          isWishlisted
+                            ? "Remove from wishlist"
+                            : "Add to wishlist"
+                        }
                       >
                         <svg
                           className="w-4 h-4"
@@ -636,23 +714,59 @@ export default function ProductsPage() {
                       </button>
                     </div>
 
-                    <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
-                      {hasDiscount && discountPercent > 0 && (
-                        <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-white/15 bg-black/70 backdrop-blur text-[10px] font-semibold tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
-                          -{discountPercent}%
-                        </span>
-                      )}
+                    {/* IMPROVED PRICE UI (same row, premium glass + clearer hierarchy) */}
+                    <div className="absolute right-3 top-3 flex items-center gap-2">
+                      <div
+                        className="
+                          relative inline-flex items-center gap-2
+                          rounded-full px-3 py-1.5
+                          border border-white/15
+                          bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(255,255,255,0.72))]
+                          backdrop-blur-md
+                          shadow-[0_14px_45px_rgba(0,0,0,0.30)]
+                        "
+                        aria-label={
+                          hasDiscount
+                            ? `On sale. Was $${formatMoney(
+                                originalPrice
+                              )}, now $${formatMoney(finalPrice)}`
+                            : `Price $${formatMoney(finalPrice)}`
+                        }
+                      >
+                        {/* soft sheen */}
+                        <span
+                          className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(to_right,rgba(255,255,255,0.55),transparent,rgba(255,255,255,0.35))] opacity-70"
+                          aria-hidden="true"
+                        />
 
-                      <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-black/10 bg-white/80 backdrop-blur shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
-                        {hasDiscount && (
-                          <span className="text-[11px] font-semibold text-black/45 line-through">
-                            ${formatMoney(originalPrice)}
+                        {/* discount chip */}
+                        {hasDiscount && discountPercent > 0 && (
+                          <span
+                            className="
+                              relative z-10 inline-flex items-center
+                              rounded-full px-2 py-0.5
+                              text-[10px] font-semibold tracking-[0.14em]
+                              bg-black text-white
+                              shadow-[0_10px_25px_rgba(0,0,0,0.25)]
+                            "
+                          >
+                            -{discountPercent}%
                           </span>
                         )}
-                        <span className="text-[12px] font-semibold text-black">
-                          ${formatMoney(finalPrice)}
-                        </span>
-                      </span>
+
+                        {/* prices */}
+                        <div className="relative z-10 inline-flex items-baseline gap-2">
+                          {hasDiscount && (
+                            <span className="text-[10px] font-semibold tracking-[0.10em] text-black/45 line-through">
+                              ${formatMoney(originalPrice)}
+                            </span>
+                          )}
+
+                          <span className="text-[11px] font-semibold tracking-[0.12em] text-black">
+                            ${formatMoney(finalPrice)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
@@ -697,7 +811,11 @@ export default function ProductsPage() {
                           "disabled:opacity-70 disabled:cursor-not-allowed",
                         ].join(" ")}
                       >
-                        {isSoldOut ? "Sold out" : addingId === product.id ? "Adding…" : "Add to bag"}
+                        {isSoldOut
+                          ? "Sold out"
+                          : addingId === product.id
+                          ? "Adding…"
+                          : "Add to bag"}
                       </button>
 
                       {!user && !isSoldOut && (
