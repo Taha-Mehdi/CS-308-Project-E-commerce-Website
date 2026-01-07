@@ -33,6 +33,35 @@ function statusChip(status) {
   return `${base} bg-white/5 text-gray-200/80 border-white/10`;
 }
 
+function reviewStatusChip(status) {
+  const s = String(status || "unknown").toLowerCase();
+  const base =
+    "inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] border";
+
+  if (s === "approved") return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+  if (s === "pending") return `${base} border-amber-500/25 bg-amber-500/10 text-amber-200`;
+  if (s === "rejected") return `${base} border-red-500/25 bg-red-500/10 text-red-200`;
+  if (s === "none") return `${base} border-white/10 bg-white/5 text-gray-200/70`;
+  return `${base} border-white/10 bg-white/5 text-gray-200/70`;
+}
+
+function Stars({ value = 0 }) {
+  const v = Math.max(0, Math.min(5, Number(value) || 0));
+  const full = Math.floor(v);
+  return (
+    <div className="flex items-center gap-1" aria-label={`Rating ${v} out of 5`}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <span
+          key={i}
+          className={[i < full ? "text-white" : "text-white/20", "text-sm", "leading-none"].join(" ")}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function Toast({ message }) {
   if (!message) return null;
   return (
@@ -62,6 +91,10 @@ export default function AccountPage() {
   // per-product loading states
   const [movingToBag, setMovingToBag] = useState(() => new Set());
   const [removing, setRemoving] = useState(() => new Set());
+
+  /* ---------------- MY REVIEWS ---------------- */
+  const [myReviews, setMyReviews] = useState([]);
+  const [loadingMyReviews, setLoadingMyReviews] = useState(true);
 
   const [message, setMessage] = useState("");
 
@@ -109,6 +142,47 @@ export default function AccountPage() {
     }
 
     if (!loadingUser && user) loadWishlist();
+  }, [loadingUser, user]);
+
+  /* ---------- LOAD MY REVIEWS ---------- */
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMyReviews() {
+      setLoadingMyReviews(true);
+      try {
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+        if (!token) {
+          if (alive) setMyReviews([]);
+          return;
+        }
+
+        // Expected endpoint (spec): show user’s submissions with status and rejection reason.
+        const res = await fetch(`${apiBase}/reviews/my`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          if (alive) setMyReviews([]);
+          return;
+        }
+
+        const data = await res.json();
+        if (alive) setMyReviews(Array.isArray(data) ? data : []);
+      } catch {
+        if (alive) setMyReviews([]);
+      } finally {
+        if (alive) setLoadingMyReviews(false);
+      }
+    }
+
+    if (!loadingUser && user) loadMyReviews();
+    return () => {
+      alive = false;
+    };
   }, [loadingUser, user]);
 
   function withSet(setter, id, on) {
@@ -170,6 +244,15 @@ export default function AccountPage() {
     [orders]
   );
 
+  // Spec: Total Reviews = count of APPROVED comments by user
+  const totalApprovedComments = useMemo(() => {
+    return (Array.isArray(myReviews) ? myReviews : []).filter((r) => {
+      const st = String(r?.status || r?.comment_status || "").toLowerCase();
+      const hasText = Boolean(String(r?.comment || r?.comment_text || "").trim());
+      return st === "approved" && hasText;
+    }).length;
+  }, [myReviews]);
+
   /* ---------- AUTH GATES ---------- */
   if (loadingUser) {
     return (
@@ -203,6 +286,10 @@ export default function AccountPage() {
               Wishlist alerts + order status for{" "}
               <span className="text-gray-100 font-semibold">{user.email}</span>.
             </p>
+            <p className="mt-2 text-[11px] text-gray-300/60">
+              Total Reviews (approved comments):{" "}
+              <span className="text-white font-semibold">{totalApprovedComments}</span>
+            </p>
           </div>
 
           <div
@@ -228,6 +315,108 @@ export default function AccountPage() {
 
         {/* TOAST */}
         <Toast message={message} />
+
+        {/* ---------- MY REVIEWS ---------- */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white">
+                My Reviews
+              </h2>
+
+              <span
+                className="
+                  inline-flex items-center gap-2 rounded-full px-3 py-1
+                  border border-white/10 bg-white/5
+                  text-[10px] font-semibold uppercase tracking-[0.18em]
+                  text-gray-200/80
+                "
+              >
+                <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent)]" />
+                {loadingMyReviews ? "…" : `${myReviews.length} submitted`}
+              </span>
+            </div>
+
+            <DripLink
+              href="/products"
+              className="
+                text-[11px] font-semibold uppercase tracking-[0.18em]
+                text-gray-200/70 hover:text-white
+                underline underline-offset-4
+              "
+            >
+              Browse products
+            </DripLink>
+          </div>
+
+          {loadingMyReviews ? (
+            <Skeleton className="h-24 rounded-[28px]" />
+          ) : myReviews.length === 0 ? (
+            <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-5 text-[11px] text-gray-300/70">
+              No reviews yet. (Ratings count immediately; comments appear after approval.)
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {myReviews
+                .slice()
+                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                .map((r) => {
+                  const status = String(r.status || r.comment_status || "unknown").toLowerCase();
+                  const comment = String(r.comment || r.comment_text || "").trim();
+                  const rejectionReason = r.rejectionReason || r.rejection_reason || "";
+                  const productLabel = r.productName || r.product_name || (r.productId ? `Product #${r.productId}` : "Product");
+
+                  return (
+                    <div
+                      key={r.id}
+                      className="
+                        rounded-[28px] border border-border bg-black/20 backdrop-blur
+                        p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
+                        space-y-3
+                      "
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{productLabel}</p>
+                          <p className="text-[11px] text-gray-300/60">
+                            {String(r.createdAt || "").slice(0, 10)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={reviewStatusChip(status)}>{status}</span>
+                          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                            <Stars value={r.rating} />
+                            <span className="text-[11px] text-white/80 font-semibold">
+                              {Number(r.rating || 0)}/5
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+                        <p className="text-[12px] text-gray-200/85 leading-relaxed">
+                          {comment ? comment : <span className="italic text-gray-200/60">No comment.</span>}
+                        </p>
+
+                        {status === "rejected" && rejectionReason ? (
+                          <p className="mt-3 text-[11px] text-rose-200/80">
+                            <span className="font-semibold">Rejection reason:</span> {rejectionReason}
+                          </p>
+                        ) : null}
+
+                        {status === "pending" ? (
+                          <p className="mt-3 text-[11px] text-amber-200/70 italic">
+                            Pending approval (not public yet).
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </section>
 
         {/* ---------- WISHLIST ---------- */}
         <section className="space-y-4">
@@ -301,12 +490,7 @@ export default function AccountPage() {
                 const isRemoving = removing.has(product.id);
 
                 return (
-                  // ✅ IMPORTANT: group name controls both action bar + description fade
                   <div key={product.id} className="relative group/actions">
-                    {/* ✅ DESCRIPTION HIDING:
-                        - On mobile: always hidden (actions are always visible)
-                        - On sm+: hidden only when actions appear (hover/focus-within)
-                    */}
                     <div
                       className="
                         [&_p]:opacity-0 sm:[&_p]:opacity-100
@@ -318,7 +502,6 @@ export default function AccountPage() {
                       <ProductCard product={product} />
                     </div>
 
-                    {/* Action bar overlay (hover on sm+, always visible on mobile) */}
                     <div
                       className="
                         absolute left-4 right-4 bottom-4 z-10
@@ -380,7 +563,6 @@ export default function AccountPage() {
                       </div>
                     </div>
 
-                    {/* Mobile: always-visible action bar */}
                     <div className="sm:hidden absolute left-4 right-4 bottom-4 z-10">
                       <div
                         className="

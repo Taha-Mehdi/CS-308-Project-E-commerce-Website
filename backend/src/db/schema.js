@@ -118,19 +118,33 @@ const wishlistItems = pgTable(
 );
 
 // REVIEWS
+// Rating is immediate.
+// Comment is moderated via status: none | pending | approved | rejected
 const reviews = pgTable(
   "reviews",
   {
     id: serial("id").primaryKey(),
     userId: integer("user_id").notNull().references(() => users.id),
     productId: integer("product_id").notNull().references(() => products.id),
+
     rating: integer("rating").notNull(),
+
+    // nullable comment text
     comment: text("comment"),
-    status: text("status").notNull().default("pending"), // pending | approved | rejected
+
+    // comment status state machine:
+    // none (no comment), pending (awaiting moderation), approved (public), rejected (not public)
+    status: text("status").notNull().default("none"),
+
+    // moderation metadata
+    moderatedBy: integer("moderated_by").references(() => users.id),
+    moderatedAt: timestamp("moderated_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
-    // ✅ Enforce: a user can only have 1 review per product
+    // Existing project rule: one review per user per product
     uniqueUserProductReview: uniqueIndex("unique_user_product_review").on(
       table.userId,
       table.productId

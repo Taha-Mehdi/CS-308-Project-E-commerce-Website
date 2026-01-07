@@ -36,6 +36,13 @@
       "when": 1766663141472,
       "tag": "0004_deep_sister_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1767828802253,
+      "tag": "0005_bizarre_jackal",
+      "breakpoints": true
     }
   ]
 }
