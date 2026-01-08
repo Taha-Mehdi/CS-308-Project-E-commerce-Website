@@ -31,6 +31,9 @@ app.set("trust proxy", 1);
 const uploadDir = path.join(__dirname, "..", "uploads");
 app.use("/uploads", express.static(uploadDir));
 
+const returnRoutes = require("./routes/returns");
+app.use("/api/returns", returnRoutes);
+
 // Global middlewares
 app.use(helmet());
 

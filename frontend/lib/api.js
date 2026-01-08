@@ -128,7 +128,7 @@ export async function getCartApi() {
   return apiRequest("/cart", { auth: true });
 }
 
-// ✅ UPDATED: supports addToCartApi(productId, qty) OR addToCartApi({productId, quantity})
+// supports addToCartApi(productId, qty) OR addToCartApi({productId, quantity})
 export async function addToCartApi(arg1, arg2 = 1) {
   let productId;
   let quantity;
@@ -166,11 +166,14 @@ export async function removeFromCartApi(itemId) {
 /* =========================
    Orders
 ========================= */
-export async function createOrderApi(items, shippingAddress) {
+export async function createOrderApi(items, shippingAddress, paymentMethod) {
+  // paymentMethod optional: "credit_card" | "account"
   return apiRequest("/orders", {
     method: "POST",
     auth: true,
-    body: { items, shippingAddress },
+    body: paymentMethod
+      ? { items, shippingAddress, paymentMethod }
+      : { items, shippingAddress },
   });
 }
 
@@ -186,7 +189,15 @@ export async function refundOrderApi(orderId) {
   return apiRequest(`/orders/${orderId}/refund`, { method: "POST", auth: true });
 }
 
-/* ✅ Selective return */
+/* =========================
+   Returns (customer + sales manager)
+   IMPORTANT: These routes live under /orders in your backend.
+========================= */
+
+/**
+ * Customer requests a return for a specific order item.
+ * POST /orders/:orderId/items/:orderItemId/return-request
+ */
 export async function requestReturnForItemApi(orderId, orderItemId, reason) {
   return apiRequest(`/orders/${orderId}/items/${orderItemId}/return-request`, {
     method: "POST",
@@ -195,17 +206,27 @@ export async function requestReturnForItemApi(orderId, orderItemId, reason) {
   });
 }
 
+/**
+ * Customer lists own return requests.
+ * GET /orders/returns/my
+ */
 export async function getMyReturnRequestsApi() {
   return apiRequest("/orders/returns/my", { auth: true });
 }
 
-/* =========================
-   Returns (sales manager)
-========================= */
+/**
+ * Sales manager lists all return requests.
+ * GET /orders/returns
+ */
 export async function listReturnRequestsApi() {
   return apiRequest("/orders/returns", { auth: true });
 }
 
+/**
+ * Sales manager decides on a return request.
+ * PATCH /orders/returns/:returnId/decision
+ * body: { decision: "approve" | "reject", note?: string }
+ */
 export async function decideReturnRequestApi(returnId, decision, note) {
   return apiRequest(`/orders/returns/${returnId}/decision`, {
     method: "PATCH",
@@ -214,6 +235,11 @@ export async function decideReturnRequestApi(returnId, decision, note) {
   });
 }
 
+/**
+ * Sales manager marks received.
+ * Backend performs: restock + refund + email + status="refunded"
+ * PATCH /orders/returns/:returnId/receive
+ */
 export async function markReturnReceivedApi(returnId) {
   return apiRequest(`/orders/returns/${returnId}/receive`, {
     method: "PATCH",

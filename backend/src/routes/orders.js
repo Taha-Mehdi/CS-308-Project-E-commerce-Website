@@ -48,6 +48,37 @@ function daysBetween(a, b) {
   return ms / (1000 * 60 * 60 * 24);
 }
 
+/**
+ * ✅ Helper: compute purchase-time unit price reliably.
+ * If a discount campaign exists (originalPrice + discountRate),
+ * store the discounted purchase price in order_items.unit_price.
+ *
+ * This ensures refunds always match the purchase-time price
+ * even after the campaign ends.
+ */
+function computePurchaseUnitPrice(productRow) {
+  const price = Number(productRow?.price);
+  const originalPrice = Number(productRow?.originalPrice);
+  const discountRate = Number(productRow?.discountRate);
+
+  const hasDiscount =
+    Number.isFinite(originalPrice) &&
+    originalPrice > 0 &&
+    Number.isFinite(discountRate) &&
+    discountRate > 0;
+
+  if (hasDiscount) {
+    const discounted = originalPrice * (1 - discountRate / 100);
+    // Guard against negative/NaN
+    if (Number.isFinite(discounted) && discounted >= 0) {
+      return discounted;
+    }
+  }
+
+  // Fallback to current product price
+  return Number.isFinite(price) ? price : 0;
+}
+
 /* =========================================================
    CUSTOMER — REQUEST SELECTIVE RETURN
 ========================================================= */
@@ -273,6 +304,7 @@ router.patch("/returns/:returnId/receive", authMiddleware, requireSalesManager, 
 
       if (!prod) return { error: { status: 404, message: "Product not found" } };
 
+      // ✅ Refund uses PURCHASE-TIME unitPrice stored in order_items
       const refundAmount = Number(item.unitPrice || 0) * Number(item.quantity || 0);
 
       const newStock = Number(prod.stock || 0) + Number(item.quantity || 0);
@@ -340,7 +372,7 @@ router.patch("/returns/:returnId/receive", authMiddleware, requireSalesManager, 
           orderId: result.orderId,
           productName: result.productName,
           refundAmount: result.refundAmount,
-          // optional: add refundMethod to email if you want
+          refundMethod: result.refundMethod,
         });
       }
     } catch (emailErr) {
@@ -360,7 +392,7 @@ router.patch("/returns/:returnId/receive", authMiddleware, requireSalesManager, 
 });
 
 /* =========================================================
-   ✅ POST /orders  (UPDATED for paymentMethod)
+   ✅ POST /orders  (UPDATED for paymentMethod + discounted purchase price)
 ========================================================= */
 router.post("/", authMiddleware, async (req, res) => {
   try {
@@ -391,13 +423,14 @@ router.post("/", authMiddleware, async (req, res) => {
 
       let total = 0;
 
+      // ✅ Compute totals using purchase-time effective price
       for (const item of items) {
         const p = productMap.get(item.productId);
         if (!p || !p.isActive) throw new Error(`Product ${item.productId} is not available`);
         if (p.stock < item.quantity) throw new Error(`Not enough stock for product ${p.name}`);
 
-        const priceNumber = Number(p.price);
-        total += priceNumber * item.quantity;
+        const unitPriceNumber = computePurchaseUnitPrice(p);
+        total += unitPriceNumber * item.quantity;
       }
 
       const userRows = await tx.select().from(users).where(eq(users.id, userId));
@@ -433,13 +466,15 @@ router.post("/", authMiddleware, async (req, res) => {
 
       const order = insertedOrders[0];
 
+      // ✅ Store PURCHASE-TIME unitPrice (discounted if campaign applied)
       const orderItemsToInsert = items.map((item) => {
         const p = productMap.get(item.productId);
+        const unitPriceNumber = computePurchaseUnitPrice(p);
         return {
           orderId: order.id,
           productId: item.productId,
           quantity: item.quantity,
-          unitPrice: p.price, // price at purchase time
+          unitPrice: unitPriceNumber.toFixed(2),
         };
       });
 

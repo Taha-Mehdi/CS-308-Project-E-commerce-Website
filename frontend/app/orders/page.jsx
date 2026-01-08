@@ -65,6 +65,7 @@ function returnStatusChip(statusRaw) {
     return `${base} border-rose-500/25 bg-rose-500/10 text-rose-200`;
   if (status === "refunded")
     return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+
   return `${base} border-white/10 bg-white/5 text-gray-200/80`;
 }
 
@@ -88,6 +89,11 @@ function normalizeImageUrl(imageUrl) {
 function formatPaymentMethodLabel(pmRaw) {
   const pm = String(pmRaw || "credit_card").toLowerCase();
   return pm === "account" ? "Account balance" : "Credit card";
+}
+
+function safeMoney(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
 }
 
 /* ================== PAGE ================== */
@@ -415,7 +421,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ✅ RETURN REQUESTS LIST (visible proof requirement) */}
+        {/* RETURN REQUESTS LIST */}
         {!loading && (
           <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-5 shadow-[0_16px_60px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
@@ -443,8 +449,12 @@ export default function OrdersPage() {
                         Order #{rr.orderId} • Item #{rr.orderItemId}
                       </p>
                       <p className="text-[11px] text-gray-300/60">
-                        {rr.refundAmount ? `Refund: $${Number(rr.refundAmount).toFixed(2)} • ` : ""}
-                        {rr.refundMethod ? `To: ${formatPaymentMethodLabel(rr.refundMethod)}` : ""}
+                        {rr.refundAmount != null
+                          ? `Refund: $${safeMoney(rr.refundAmount)} • `
+                          : ""}
+                        {rr.refundMethod
+                          ? `To: ${formatPaymentMethodLabel(rr.refundMethod)}`
+                          : ""}
                       </p>
                     </div>
 
@@ -505,7 +515,6 @@ export default function OrdersPage() {
                       {formatStatusLabel(order.status)}
                     </span>
 
-                    {/* Cancel (processing only) */}
                     <ActionButton
                       onClick={() => handleCancel(order)}
                       disabled={!canCancel || busyOrder}
@@ -563,13 +572,17 @@ export default function OrdersPage() {
                             </div>
 
                             <p className="text-[11px] text-gray-300/60 line-clamp-2">
-                              Qty {item.quantity} · ${Number(item.unitPrice).toFixed(2)} each
+                              Qty {item.quantity} · ${safeMoney(item.unitPrice)} each
                             </p>
 
-                            {rr && String(rr.status) === "refunded" && rr.refundAmount != null ? (
+                            {rr &&
+                            String(rr.status).toLowerCase() === "refunded" &&
+                            rr.refundAmount != null ? (
                               <p className="text-[11px] text-emerald-200/90">
-                                Refunded: ${Number(rr.refundAmount).toFixed(2)}{" "}
-                                {rr.refundMethod ? `to ${formatPaymentMethodLabel(rr.refundMethod)}` : ""}
+                                Refunded: ${safeMoney(rr.refundAmount)}{" "}
+                                {rr.refundMethod
+                                  ? `to ${formatPaymentMethodLabel(rr.refundMethod)}`
+                                  : ""}
                               </p>
                             ) : null}
                           </div>
@@ -580,11 +593,10 @@ export default function OrdersPage() {
                                 Line total
                               </p>
                               <p className="text-sm font-semibold text-white">
-                                ${(item.quantity * item.unitPrice).toFixed(2)}
+                                {safeMoney(item.quantity * item.unitPrice)}
                               </p>
                             </div>
 
-                            {/* ✅ Selective return button */}
                             <ActionButton
                               onClick={() => handleRequestReturn(order, item)}
                               disabled={!canRequestReturn || busyItem}
@@ -609,7 +621,7 @@ export default function OrdersPage() {
                       Total
                     </p>
                     <p className="text-lg font-semibold text-white">
-                      ${Number(order.total || 0).toFixed(2)}
+                      ${safeMoney(order.total || 0)}
                     </p>
                   </div>
 
@@ -621,7 +633,6 @@ export default function OrdersPage() {
                   </ActionButton>
                 </div>
 
-                {/* rule hint */}
                 <div className="text-[10px] text-gray-300/45 uppercase tracking-[0.18em] pt-1">
                   {canCancel
                     ? 'You can cancel while status is "processing".'

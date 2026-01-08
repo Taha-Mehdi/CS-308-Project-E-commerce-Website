@@ -22,6 +22,7 @@ function statusChip(statusRaw) {
     return `${base} border-rose-500/25 bg-rose-500/10 text-rose-200`;
   if (status === "refunded")
     return `${base} border-emerald-500/25 bg-emerald-500/10 text-emerald-200`;
+
   return `${base} border-white/10 bg-white/5 text-gray-200/80`;
 }
 
@@ -31,6 +32,11 @@ function safeDateLabel(iso) {
   } catch {
     return "—";
   }
+}
+
+function safeMoney(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
 }
 
 export default function SalesReturnsPage() {
@@ -72,10 +78,12 @@ export default function SalesReturnsPage() {
   async function markReceived(id) {
     setBusyId(id);
     try {
+      // IMPORTANT:
+      // This endpoint ALSO performs refund + restock + email
       await markReturnReceivedApi(id);
       await load();
     } catch (err) {
-      alert(err?.message || "Failed to mark received/refund.");
+      alert(err?.message || "Failed to process return.");
     } finally {
       setBusyId(null);
     }
@@ -92,7 +100,7 @@ export default function SalesReturnsPage() {
             Return Requests
           </h1>
           <p className="text-sm text-gray-300/70">
-            Review requests, approve/reject, then refund after receiving the product.
+            Approve or reject requests. Approved returns are refunded once received.
           </p>
         </div>
 
@@ -129,38 +137,33 @@ export default function SalesReturnsPage() {
                       <p className="text-[11px] uppercase tracking-[0.2em] text-gray-300/60">
                         Requested: {safeDateLabel(r.requestedAt)}
                       </p>
+                      {r.refundedAt ? (
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-gray-300/60">
+                          Refunded: {safeDateLabel(r.refundedAt)}
+                        </p>
+                      ) : null}
                     </div>
 
                     <span className={statusChip(r.status)}>{status}</span>
                   </div>
 
-                  {r.reason ? (
+                  {r.reason && (
                     <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
                       <p className="text-[11px] uppercase tracking-[0.18em] text-gray-300/60">
                         Reason
                       </p>
                       <p className="text-sm text-gray-200/80">{r.reason}</p>
                     </div>
-                  ) : null}
+                  )}
 
-                  {r.decisionNote ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-300/60">
-                        Decision Note
-                      </p>
-                      <p className="text-sm text-gray-200/80">{r.decisionNote}</p>
-                    </div>
-                  ) : null}
-
-                  {r.refundAmount != null && status === "refunded" ? (
-                    <p className="text-[11px] text-emerald-200/90">
-                      Refunded: ${Number(r.refundAmount).toFixed(2)} · Refund time:{" "}
-                      {safeDateLabel(r.refundedAt)}
+                  {r.refundAmount != null && (
+                    <p className="text-[11px] text-gray-200/70">
+                      Refund amount: ${safeMoney(r.refundAmount)}
                     </p>
-                  ) : null}
+                  )}
 
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {status === "requested" ? (
+                    {status === "requested" && (
                       <>
                         <ActionButton
                           onClick={() => decide(r.id, "approve")}
@@ -175,13 +178,13 @@ export default function SalesReturnsPage() {
                           {busy ? "Saving…" : "Reject"}
                         </ActionButton>
                       </>
-                    ) : null}
+                    )}
 
-                    {status === "approved" ? (
+                    {status === "approved" && (
                       <ActionButton onClick={() => markReceived(r.id)} disabled={busy}>
                         {busy ? "Processing…" : "Mark Received & Refund"}
                       </ActionButton>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               );
