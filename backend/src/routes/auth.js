@@ -13,6 +13,8 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   fullName: z.string().min(1),
+  taxId: z.string().min(1),
+  address: z.string().min(1),
 });
 
 const loginSchema = z.object({
@@ -32,7 +34,6 @@ async function getRoleNameById(roleId) {
 
 // ─────────────────────────────────────────────
 // Helper: create access & refresh tokens
-// Now includes roleName (stable) in JWT payload
 // ─────────────────────────────────────────────
 function createAccessToken(user, roleName) {
   return jwt.sign(
@@ -68,8 +69,13 @@ function publicUser(user, roleName) {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    taxId: user.taxId,
+    address: user.address,
     roleId: user.roleId,
     roleName: roleName || null,
+
+    // ✅ IMPORTANT: expose balance to frontend
+    accountBalance: Number(user.accountBalance || 0).toFixed(2),
   };
 }
 
@@ -87,15 +93,13 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const { email, password, fullName } = parsed.data;
+    const { email, password, fullName, taxId, address } = parsed.data;
 
-    // Check if user exists
     const existing = await db.select().from(users).where(eq(users.email, email));
     if (existing.length > 0) {
       return res.status(409).json({ message: "Email already registered" });
     }
 
-    // Get customer role
     const roleRows = await db.select().from(roles).where(eq(roles.name, "customer"));
     if (roleRows.length === 0) {
       return res.status(500).json({ message: "Default role not configured" });
@@ -110,6 +114,8 @@ router.post("/register", async (req, res) => {
         email,
         passwordHash,
         fullName,
+        taxId,
+        address,
         roleId: customerRole.id,
       })
       .returning();
@@ -191,7 +197,6 @@ router.post("/refresh", async (req, res) => {
       return res.status(401).json({ message: "Invalid refresh token" });
     }
 
-    // Ensure user still exists + get latest data
     const found = await db.select().from(users).where(eq(users.id, payload.id));
     if (found.length === 0) {
       return res.status(404).json({ message: "User not found" });
@@ -200,7 +205,6 @@ router.post("/refresh", async (req, res) => {
     const user = found[0];
     const roleName = await getRoleNameById(user.roleId);
 
-    // issue new tokens
     const newAccessToken = createAccessToken(user, roleName);
     const newRefreshToken = createRefreshToken(user, roleName);
 
@@ -221,7 +225,7 @@ router.post("/refresh", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// GET /auth/me (requires Authorization: Bearer <token>)
+// GET /auth/me
 // ─────────────────────────────────────────────
 router.get("/me", authMiddleware, async (req, res) => {
   try {
@@ -234,7 +238,6 @@ router.get("/me", authMiddleware, async (req, res) => {
 
     const user = found[0];
 
-    // Prefer roleName already in token (fast), but verify from DB if missing
     let roleName = req.user.roleName || null;
     if (!roleName) roleName = await getRoleNameById(user.roleId);
 

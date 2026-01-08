@@ -15,7 +15,8 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
   const nextPath = searchParams.get("next") || "/";
 
   function validateForm() {
@@ -43,7 +44,10 @@ export default function LoginPage() {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
       });
 
       const contentType = res.headers.get("content-type") || "";
@@ -65,13 +69,14 @@ export default function LoginPage() {
         return;
       }
 
+      // ✅ MUST contain user with fullName/email/address/taxId etc (backend provides it)
       if (!data || !data.token || !data.user) {
         setMessage("Invalid response from server.");
         setSubmitting(false);
         return;
       }
 
-      // Save session via context (it already stores token/user in localStorage)
+      // Save session via context (stores token + user in localStorage)
       try {
         login(data.token, data.user);
       } catch (err) {
@@ -81,7 +86,7 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ Always land on homepage (or explicit next=)
+      // ✅ Redirect (next= if present)
       router.replace(nextPath || "/");
     } catch (err) {
       console.error("Login error:", err);
@@ -98,7 +103,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white">
       <div className="w-full max-w-md">
-        {/* Outer shell */}
         <div className="rounded-[28px] border border-border bg-black/25 backdrop-blur shadow-[0_18px_80px_rgba(0,0,0,0.55)] overflow-hidden">
           {/* top glow */}
           <div
@@ -107,7 +111,7 @@ export default function LoginPage() {
           />
 
           <div className="px-6 py-7 sm:px-8 sm:py-8 space-y-6">
-            {/* Brand / header */}
+            {/* header */}
             <div className="space-y-2">
               <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
                 SNEAKS-UP
@@ -120,14 +124,14 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Message */}
+            {/* message */}
             {message && (
               <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[11px] text-gray-200/85">
                 {message}
               </div>
             )}
 
-            {/* Form */}
+            {/* form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
@@ -173,7 +177,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Footer */}
+            {/* footer */}
             <div className="pt-1 flex items-center justify-between gap-3 text-[11px] text-gray-300/70">
               <span>New here?</span>
               <DripLink

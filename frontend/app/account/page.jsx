@@ -77,6 +77,12 @@ function Toast({ message }) {
   );
 }
 
+function formatMoney(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "0.00";
+  return n.toFixed(2);
+}
+
 export default function AccountPage() {
   const { user, loadingUser } = useAuth();
 
@@ -159,7 +165,6 @@ export default function AccountPage() {
           return;
         }
 
-        // Expected endpoint (spec): show user’s submissions with status and rejection reason.
         const res = await fetch(`${apiBase}/reviews/my`, {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
@@ -216,7 +221,6 @@ export default function AccountPage() {
     try {
       await addToCartApi({ productId, quantity: 1 });
 
-      // remove from wishlist after successful add (best UX)
       try {
         await removeFromWishlistApi(productId);
         setWishlist((prev) => prev.filter((p) => p.id !== productId));
@@ -270,11 +274,13 @@ export default function AccountPage() {
     );
   }
 
+  const accountBalance = formatMoney(user?.accountBalance);
+
   return (
     <SiteLayout>
       <div className="space-y-10 py-6">
         {/* HEADER */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/60">
               Account
@@ -292,29 +298,82 @@ export default function AccountPage() {
             </p>
           </div>
 
-          <div
-            className="
-              rounded-[26px] border border-border bg-black/25 backdrop-blur
-              px-5 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.45)]
-              flex items-center gap-4
-            "
-          >
-            <div className="h-11 w-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-100">
-                {initialsFromName(user.fullName)}
-              </span>
+          <div className="flex flex-col gap-3">
+            {/* user chip */}
+            <div
+              className="
+                rounded-[26px] border border-border bg-black/25 backdrop-blur
+                px-5 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.45)]
+                flex items-center gap-4
+              "
+            >
+              <div className="h-11 w-11 rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-100">
+                  {initialsFromName(user.fullName)}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">
+                  {user.fullName || "SNEAKS-UP Member"}
+                </p>
+                <p className="text-[11px] text-gray-300/60 truncate">{user.email}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">
-                {user.fullName || "SNEAKS-UP Member"}
+
+            {/* ✅ NEW: Account balance (refund-to-account) */}
+            <div
+              className="
+                rounded-[26px] border border-white/10 bg-black/20 backdrop-blur
+                px-5 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.35)]
+              "
+            >
+              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60">
+                Account Balance
               </p>
-              <p className="text-[11px] text-gray-300/60 truncate">{user.email}</p>
+              <p className="mt-2 text-xl font-semibold text-white">
+                ${accountBalance}
+              </p>
+              <p className="mt-1 text-[11px] text-gray-300/60">
+                Refunds to <span className="text-gray-100 font-semibold">account</span> increase this balance.
+              </p>
             </div>
           </div>
         </div>
 
         {/* TOAST */}
         <Toast message={message} />
+
+        {/* ---------- PROFILE ---------- */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white">
+            Profile
+          </h2>
+
+          <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-6 shadow-[0_16px_60px_rgba(0,0,0,0.40)]">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60">Name</p>
+                <p className="mt-1 text-sm text-white font-semibold break-words">
+                  {user.fullName || "—"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60">Email</p>
+                <p className="mt-1 text-sm text-white font-semibold break-words">
+                  {user.email || "—"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60">Home address</p>
+                <p className="mt-1 text-sm text-white font-semibold break-words">
+                  {user.address || "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* ---------- MY REVIEWS ---------- */}
         <section className="space-y-4">
@@ -345,100 +404,75 @@ export default function AccountPage() {
                 underline underline-offset-4
               "
             >
-              Browse products
+              Rate more
             </DripLink>
           </div>
 
           {loadingMyReviews ? (
-            <Skeleton className="h-24 rounded-[28px]" />
+            <div className="grid gap-3">
+              <Skeleton className="h-20 rounded-[22px]" />
+              <Skeleton className="h-20 rounded-[22px]" />
+            </div>
           ) : myReviews.length === 0 ? (
-            <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-5 text-[11px] text-gray-300/70">
-              No reviews yet. (Ratings count immediately; comments appear after approval.)
+            <div className="rounded-[28px] border border-border bg-black/20 backdrop-blur p-6 text-[11px] text-gray-300/70">
+              You haven’t submitted any reviews yet.
             </div>
           ) : (
-            <div className="grid gap-3">
-              {myReviews
-                .slice()
-                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-                .map((r) => {
-                  const status = String(r.status || r.comment_status || "unknown").toLowerCase();
-                  const comment = String(r.comment || r.comment_text || "").trim();
-                  const rejectionReason = r.rejectionReason || r.rejection_reason || "";
-                  const productLabel = r.productName || r.product_name || (r.productId ? `Product #${r.productId}` : "Product");
+            <div className="space-y-3">
+              {myReviews.map((r) => {
+                const productName = r?.productName || r?.product?.name || `Product #${r?.productId}`;
+                const status = r?.status || r?.commentStatus || r?.comment_status || "none";
+                const rejectionReason = r?.rejectionReason || r?.rejection_reason || null;
 
-                  return (
-                    <div
-                      key={r.id}
-                      className="
-                        rounded-[28px] border border-border bg-black/20 backdrop-blur
-                        p-5 shadow-[0_16px_60px_rgba(0,0,0,0.40)]
-                        space-y-3
-                      "
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{productLabel}</p>
-                          <p className="text-[11px] text-gray-300/60">
-                            {String(r.createdAt || "").slice(0, 10)}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className={reviewStatusChip(status)}>{status}</span>
-                          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                            <Stars value={r.rating} />
-                            <span className="text-[11px] text-white/80 font-semibold">
-                              {Number(r.rating || 0)}/5
-                            </span>
+                return (
+                  <div
+                    key={r.id}
+                    className="
+                      rounded-[26px] border border-white/10 bg-black/20 backdrop-blur
+                      p-5 shadow-[0_14px_55px_rgba(0,0,0,0.35)]
+                      space-y-3
+                    "
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{productName}</p>
+                        <div className="mt-2 inline-flex items-center gap-3">
+                          <Stars value={r?.rating || 0} />
+                          <span className="text-[11px] text-gray-300/70 font-semibold">
+                            {Number(r?.rating || 0)}/5
                           </span>
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
-                        <p className="text-[12px] text-gray-200/85 leading-relaxed">
-                          {comment ? comment : <span className="italic text-gray-200/60">No comment.</span>}
-                        </p>
-
-                        {status === "rejected" && rejectionReason ? (
-                          <p className="mt-3 text-[11px] text-rose-200/80">
-                            <span className="font-semibold">Rejection reason:</span> {rejectionReason}
-                          </p>
-                        ) : null}
-
-                        {status === "pending" ? (
-                          <p className="mt-3 text-[11px] text-amber-200/70 italic">
-                            Pending approval (not public yet).
-                          </p>
-                        ) : null}
-                      </div>
+                      <span className={reviewStatusChip(status)}>{String(status).toUpperCase()}</span>
                     </div>
-                  );
-                })}
+
+                    {r?.comment ? (
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                        <p className="text-[12px] text-gray-200/85 leading-relaxed">{r.comment}</p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-300/60">Rating only (no comment).</p>
+                    )}
+
+                    {String(status).toLowerCase() === "rejected" && rejectionReason && (
+                      <p className="text-[11px] text-red-200/80">
+                        Rejection reason: {rejectionReason}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
 
         {/* ---------- WISHLIST ---------- */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white">
-                Wishlist
-              </h2>
-
-              <span
-                className="
-                  inline-flex items-center gap-2 rounded-full px-3 py-1
-                  border border-white/10 bg-white/5
-                  text-[10px] font-semibold uppercase tracking-[0.18em]
-                  text-gray-200/80
-                "
-              >
-                <span className="inline-block size-1.5 rounded-full bg-[var(--drip-accent)]" />
-                {loadingWishlist ? "…" : `${wishlist.length} items`}
-              </span>
-            </div>
-
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white">
+              Wishlist
+            </h2>
             <DripLink
               href="/products"
               className="

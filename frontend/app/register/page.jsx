@@ -11,8 +11,12 @@ export default function RegisterPage() {
   const searchParams = useSearchParams();
 
   const [fullName, setFullName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [address, setAddress] = useState("");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -22,10 +26,19 @@ export default function RegisterPage() {
   function validateForm() {
     if (!fullName.trim()) return "Please enter your full name.";
     if (fullName.trim().length < 2) return "Your name should be at least 2 characters.";
+
+    if (!taxId.trim()) return "Please enter your Tax ID.";
+    if (taxId.trim().length < 3) return "Tax ID looks too short.";
+
+    if (!address.trim()) return "Please enter your home address.";
+    if (address.trim().length < 5) return "Address looks too short.";
+
     if (!email.trim()) return "Please enter your email address.";
     if (!email.includes("@") || !email.includes(".")) return "Please enter a valid email address.";
+
     if (!password.trim()) return "Please choose a password.";
     if (password.length < 6) return "Password should be at least 6 characters long.";
+
     return null;
   }
 
@@ -45,7 +58,13 @@ export default function RegisterPage() {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, fullName }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          fullName: fullName.trim(),
+          taxId: taxId.trim(),
+          address: address.trim(),
+        }),
       });
 
       const contentType = res.headers.get("content-type") || "";
@@ -95,6 +114,11 @@ export default function RegisterPage() {
     "text-sm text-gray-100 placeholder:text-gray-400/70 backdrop-blur " +
     "focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]";
 
+  const textAreaBase =
+    "w-full rounded-2xl border border-border bg-white/5 px-4 py-3 " +
+    "text-sm text-gray-100 placeholder:text-gray-400/70 backdrop-blur " +
+    "focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklab,var(--drip-accent)_45%,transparent)]";
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white">
       <div className="w-full max-w-md">
@@ -139,6 +163,37 @@ export default function RegisterPage() {
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Test User"
                   className={inputBase}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Tax ID
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={taxId}
+                  onChange={(e) => setTaxId(e.target.value)}
+                  placeholder="1234567890"
+                  className={inputBase}
+                />
+                <p className="text-[10px] text-gray-300/55">
+                  Required for invoices and order records.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                  Home address
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Street, Building, City, Country"
+                  className={textAreaBase}
                 />
               </div>
 

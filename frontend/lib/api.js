@@ -1,4 +1,3 @@
-
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -26,235 +25,84 @@ export function clearStoredTokens() {
 }
 
 /* -------------------------
-   Helpers
-------------------------- */
-async function parseJsonSafe(res) {
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) return null;
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function refreshAccessToken() {
-  const { refreshToken } = getStoredTokens();
-  if (!refreshToken) {
-    const err = new Error("No refresh token");
-    err.status = 401;
-    throw err;
-  }
-
-  const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  });
-
-  const data = await parseJsonSafe(res);
-
-  if (!res.ok) {
-    const err = new Error(data?.message || "Refresh failed");
-    err.status = res.status || 401;
-    throw err;
-  }
-
-  setStoredTokens(data.token, data.refreshToken);
-  return data.token;
-}
-
-/* -------------------------
-   Role-aware redirect helper (client only)
-------------------------- */
-function redirectOnForbiddenDefault() {
-  if (typeof window === "undefined") return;
-
-  // Try to redirect based on stored user roleName if available
-  try {
-    const raw = localStorage.getItem("user");
-    const u = raw ? JSON.parse(raw) : null;
-    const role = u?.roleName || u?.role || u?.role_name;
-
-    if (role === "sales_manager") {
-      window.location.href = "/sales-admin";
-      return;
-    }
-    if (role === "admin" || role === "product_manager") {
-      window.location.href = "/admin";
-      return;
-    }
-  } catch {
-    // ignore
-  }
-
-  // fallback
-  window.location.href = "/";
-}
-
-/* -------------------------
-   Core API wrapper
-   - 401 + Token expired => refresh once
-   - 403 => redirect & return null (prevents console spam)
+   Fetch helper
 ------------------------- */
 export async function apiRequest(
   path,
-  { method = "GET", body, auth = false, headers = {}, onForbidden } = {}
+  { method = "GET", body, auth = false, headers = {} } = {}
 ) {
-  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
-  let { token } = getStoredTokens();
+  const url = `${API_BASE_URL}${path}`;
 
-  const reqHeaders = {
+  const finalHeaders = {
     "Content-Type": "application/json",
     ...headers,
   };
 
   if (auth) {
-    if (!token) {
-      const err = new Error("Not authenticated");
-      err.status = 401;
-      throw err;
-    }
-    reqHeaders.Authorization = `Bearer ${token}`;
+    const { token } = getStoredTokens();
+    if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
-  async function doFetch(hdrs) {
-    const res = await fetch(url, {
-      method,
-      headers: hdrs,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await parseJsonSafe(res);
-    return { res, data };
+  const res = await fetch(url, {
+    method,
+    headers: finalHeaders,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
+  const data = isJson ? await res.json().catch(() => null) : null;
+
+  if (!res.ok) {
+    const err = new Error(data?.message || "Request failed");
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
 
-  let { res, data } = await doFetch(reqHeaders);
-
-  if (res.ok) return data;
-
-  // ✅ Global forbidden handling (role separated panels)
-  if (res.status === 403) {
-    if (typeof onForbidden === "function") {
-      try {
-        onForbidden({ status: 403, message: data?.message || "Access denied" });
-      } catch {
-        // ignore
-      }
-    } else {
-      redirectOnForbiddenDefault();
-    }
-
-    // ✅ return null instead of throwing (prevents noisy uncaught errors)
-    return null;
-  }
-
-  // Retry once if token expired
-  if (auth && res.status === 401 && data?.message === "Token expired") {
-    try {
-      token = await refreshAccessToken();
-      const retry = await doFetch({
-        ...reqHeaders,
-        Authorization: `Bearer ${token}`,
-      });
-      if (retry.res.ok) return retry.data;
-
-      const err = new Error(retry.data?.message || "API request failed");
-      err.status = retry.res.status;
-      err.data = retry.data;
-      throw err;
-    } catch {
-      clearStoredTokens();
-      const err = new Error("Session expired. Please login again.");
-      err.status = 401;
-      throw err;
-    }
-  }
-
-  const err = new Error(data?.message || "API request failed");
-  err.status = res.status;
-  err.data = data;
-
-  if (res.status === 401) clearStoredTokens();
-  throw err;
+  return data;
 }
 
 /* -------------------------
-   PDF download helper (auth)
+   Invoice download helper (PDF)
 ------------------------- */
 export async function downloadInvoicePdfBlob(orderId) {
   const url = `${API_BASE_URL}/invoice/${orderId}`;
-  let { token } = getStoredTokens();
 
-  if (!token) {
-    const err = new Error("Not authenticated");
-    err.status = 401;
-    throw err;
-  }
+  const { token } = getStoredTokens();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
 
-  async function doFetch(t) {
-    return fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${t}` },
-    });
-  }
-
-  let res = await doFetch(token);
-
-  // If expired -> refresh once -> retry
-  if (res.status === 401) {
-    const ct = res.headers.get("content-type") || "";
-    let data = null;
-    if (ct.includes("application/json")) data = await parseJsonSafe(res);
-
-    if (data?.message === "Token expired") {
-      try {
-        token = await refreshAccessToken();
-        res = await doFetch(token);
-      } catch {
-        clearStoredTokens();
-        const err = new Error("Session expired. Please login again.");
-        err.status = 401;
-        throw err;
-      }
-    }
-  }
-
+  const res = await fetch(url, { headers, cache: "no-store" });
   if (!res.ok) {
-    const ct = res.headers.get("content-type") || "";
-    let msg = "Failed to download invoice";
-    if (ct.includes("application/json")) {
-      const data = await parseJsonSafe(res);
-      if (data?.message) msg = data.message;
-    }
-    const err = new Error(msg);
+    const err = new Error("Failed to download invoice");
     err.status = res.status;
     throw err;
   }
-
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("application/pdf")) {
-    const err = new Error("Unexpected invoice response (not PDF)");
-    err.status = 500;
-    throw err;
-  }
-
-  return res.blob();
+  return await res.blob();
 }
 
 /* =========================
    Auth
 ========================= */
-export async function loginApi(payload) {
-  const data = await apiRequest("/auth/login", { method: "POST", body: payload });
-  if (!data) return null;
-  setStoredTokens(data.token, data.refreshToken);
+export async function loginApi(email, password) {
+  const data = await apiRequest("/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+
+  setStoredTokens(data?.token, data?.refreshToken);
   return data;
 }
 
 export async function registerApi(payload) {
-  const data = await apiRequest("/auth/register", { method: "POST", body: payload });
-  if (!data) return null;
-  setStoredTokens(data.token, data.refreshToken);
+  const data = await apiRequest("/auth/register", {
+    method: "POST",
+    body: payload,
+  });
+
+  setStoredTokens(data?.token, data?.refreshToken);
   return data;
 }
 
@@ -280,20 +128,36 @@ export async function getCartApi() {
   return apiRequest("/cart", { auth: true });
 }
 
-export async function addToCartApi(payload) {
-  return apiRequest("/cart/add", { method: "POST", body: payload, auth: true });
-}
+// ✅ UPDATED: supports addToCartApi(productId, qty) OR addToCartApi({productId, quantity})
+export async function addToCartApi(arg1, arg2 = 1) {
+  let productId;
+  let quantity;
 
-export async function updateCartItemApi(productId, quantity) {
-  return apiRequest("/cart/update", {
-    method: "PUT",
+  if (typeof arg1 === "object" && arg1 !== null) {
+    productId = arg1.productId;
+    quantity = arg1.quantity ?? 1;
+  } else {
+    productId = arg1;
+    quantity = arg2;
+  }
+
+  return apiRequest("/cart", {
+    method: "POST",
     auth: true,
     body: { productId, quantity },
   });
 }
 
-export async function removeFromCartApi(productId) {
-  return apiRequest(`/cart/remove/${productId}`, {
+export async function updateCartItemApi(itemId, quantity) {
+  return apiRequest(`/cart/${itemId}`, {
+    method: "PATCH",
+    auth: true,
+    body: { quantity },
+  });
+}
+
+export async function removeFromCartApi(itemId) {
+  return apiRequest(`/cart/${itemId}`, {
     method: "DELETE",
     auth: true,
   });
@@ -302,16 +166,59 @@ export async function removeFromCartApi(productId) {
 /* =========================
    Orders
 ========================= */
-export async function createOrderApi(items) {
+export async function createOrderApi(items, shippingAddress) {
   return apiRequest("/orders", {
     method: "POST",
     auth: true,
-    body: { items },
+    body: { items, shippingAddress },
   });
 }
 
 export async function getMyOrdersApi() {
   return apiRequest("/orders/my", { auth: true });
+}
+
+export async function cancelOrderApi(orderId) {
+  return apiRequest(`/orders/${orderId}/cancel`, { method: "POST", auth: true });
+}
+
+export async function refundOrderApi(orderId) {
+  return apiRequest(`/orders/${orderId}/refund`, { method: "POST", auth: true });
+}
+
+/* ✅ Selective return */
+export async function requestReturnForItemApi(orderId, orderItemId, reason) {
+  return apiRequest(`/orders/${orderId}/items/${orderItemId}/return-request`, {
+    method: "POST",
+    auth: true,
+    body: reason ? { reason } : {},
+  });
+}
+
+export async function getMyReturnRequestsApi() {
+  return apiRequest("/orders/returns/my", { auth: true });
+}
+
+/* =========================
+   Returns (sales manager)
+========================= */
+export async function listReturnRequestsApi() {
+  return apiRequest("/orders/returns", { auth: true });
+}
+
+export async function decideReturnRequestApi(returnId, decision, note) {
+  return apiRequest(`/orders/returns/${returnId}/decision`, {
+    method: "PATCH",
+    auth: true,
+    body: note ? { decision, note } : { decision },
+  });
+}
+
+export async function markReturnReceivedApi(returnId) {
+  return apiRequest(`/orders/returns/${returnId}/receive`, {
+    method: "PATCH",
+    auth: true,
+  });
 }
 
 /* =========================
@@ -330,10 +237,9 @@ export async function addToWishlistApi(productId) {
 }
 
 export async function removeFromWishlistApi(productId) {
-  return apiRequest("/wishlist", {
+  return apiRequest(`/wishlist/${productId}`, {
     method: "DELETE",
     auth: true,
-    body: { productId },
   });
 }
 
@@ -341,30 +247,36 @@ export async function removeFromWishlistApi(productId) {
    Reviews
 ========================= */
 export async function getProductReviewsApi(productId) {
-  return apiRequest(`/products/${productId}/reviews`);
+  return apiRequest(`/reviews/${productId}`);
 }
 
-export async function addProductReviewApi(productId, review) {
-  return apiRequest(`/products/${productId}/reviews`, {
+export async function addProductReviewApi(productId, payload) {
+  return apiRequest(`/reviews/${productId}`, {
     method: "POST",
     auth: true,
-    body: review,
+    body: payload,
   });
 }
 
 /* =========================
-   Sales Manager
+   Analytics (sales manager)
 ========================= */
 export async function getAnalyticsSummaryApi(from, to) {
   const q = new URLSearchParams({ from, to }).toString();
   return apiRequest(`/analytics/summary?${q}`, { auth: true });
 }
 
+/* =========================
+   Invoices (sales manager)
+========================= */
 export async function getInvoicesRangeApi(from, to) {
   const q = new URLSearchParams({ from, to }).toString();
   return apiRequest(`/invoice?${q}`, { auth: true });
 }
 
+/* =========================
+   Discounts (sales manager)
+========================= */
 export async function applyDiscountApi({ productIds, discountRate }) {
   return apiRequest("/products/discounts", {
     method: "POST",

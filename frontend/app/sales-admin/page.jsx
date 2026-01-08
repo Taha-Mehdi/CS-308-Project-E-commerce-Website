@@ -93,6 +93,34 @@ function IconPricing(props) {
   );
 }
 
+/* ✅ NEW: Returns icon */
+function IconReturn(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M7 7h9a4 4 0 1 1 0 8H9"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 9 7 7l3-2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 17h6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /* ----------------- card link ----------------- */
 function CardLink({ href, eyebrow, title, desc, meta, Icon }) {
   return (
@@ -110,13 +138,11 @@ function CardLink({ href, eyebrow, title, desc, meta, Icon }) {
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30",
       ].join(" ")}
     >
-      {/* hover glow */}
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <div className="absolute -top-28 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-28 right-0 h-72 w-72 rounded-full bg-white/5 blur-3xl" />
       </div>
 
-      {/* subtle grid */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.08]"
         style={{
@@ -149,7 +175,6 @@ function CardLink({ href, eyebrow, title, desc, meta, Icon }) {
             {desc}
           </p>
 
-          {/* meta */}
           <div className="mt-3">
             <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/60">
               {meta}
@@ -158,7 +183,6 @@ function CardLink({ href, eyebrow, title, desc, meta, Icon }) {
         </div>
       </div>
 
-      {/* CTA pinned to bottom */}
       <div className="relative mt-auto pt-5">
         <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-white/75">
           <span className="h-1.5 w-1.5 rounded-full bg-white/35 transition-colors group-hover:bg-white/60" />
@@ -177,7 +201,6 @@ export default function SalesAdminHome() {
 
   return (
     <div className="relative">
-      {/* Ambient background */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute -top-28 left-1/2 h-72 w-[560px] -translate-x-1/2 rounded-full bg-white/10 blur-3xl opacity-40" />
         <div className="absolute top-32 right-0 h-72 w-72 rounded-full bg-white/5 blur-3xl opacity-30" />
@@ -185,7 +208,6 @@ export default function SalesAdminHome() {
       </div>
 
       <div className="space-y-6">
-        {/* Header */}
         <div className="space-y-2">
           <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-white/55">
             Sales Manager panel
@@ -217,7 +239,6 @@ export default function SalesAdminHome() {
           </div>
         </div>
 
-        {/* Cards: 2 x 2 (same size) */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 auto-rows-fr">
           <CardLink
             href="/sales-admin/discounts"
@@ -253,6 +274,16 @@ export default function SalesAdminHome() {
             desc="Update product base prices."
             meta="Pricing"
             Icon={IconPricing}
+          />
+
+          {/* ✅ NEW */}
+          <CardLink
+            href="/sales-admin/returns"
+            eyebrow="Returns"
+            title="Return requests"
+            desc="Approve/reject returns, mark received, trigger refunds + restock."
+            meta="Refund workflow"
+            Icon={IconReturn}
           />
         </div>
       </div>

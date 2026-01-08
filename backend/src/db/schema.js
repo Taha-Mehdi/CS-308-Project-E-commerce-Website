@@ -32,6 +32,12 @@ const users = pgTable("users", {
   address: text("address"),
   roleId: integer("role_id").notNull().references(() => roles.id),
   isActive: boolean("is_active").notNull().default(true),
+
+  // ✅ Store credit balance (for refunds to account)
+  accountBalance: numeric("account_balance", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -50,9 +56,7 @@ const products = pgTable("products", {
   // product manager can specify; otherwise used as fallback 50% of sale price for profit/loss
   cost: numeric("cost", { precision: 10, scale: 2 }),
 
-  // Discount support:
-  // - originalPrice: the pre-discount price we can restore to when discount removed
-  // - discountRate: percentage (0..100), nullable means "no discount"
+  // Discount support
   originalPrice: numeric("original_price", { precision: 10, scale: 2 }),
   discountRate: numeric("discount_rate", { precision: 5, scale: 2 }),
 
@@ -69,6 +73,10 @@ const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   status: text("status").notNull().default("pending"),
+
+  // ✅ credit_card | account
+  paymentMethod: text("payment_method").notNull().default("credit_card"),
+
   total: numeric("total", { precision: 10, scale: 2 }).notNull().default("0"),
   shippingAddress: text("shipping_address").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -80,8 +88,52 @@ const orderItems = pgTable("order_items", {
   orderId: integer("order_id").notNull().references(() => orders.id),
   productId: integer("product_id").notNull().references(() => products.id),
   quantity: integer("quantity").notNull().default(1),
+
+  // IMPORTANT: this is the price at purchase time (includes discount)
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
 });
+
+/**
+ * RETURN REQUESTS (Selective Return + Refund)
+ * Flow:
+ * - customer creates request within 30 days & only if delivered
+ * - sales_manager decides approve/reject
+ * - once received back, sales_manager marks received -> refunds + restocks + emails customer
+ */
+const returnRequests = pgTable(
+  "return_requests",
+  {
+    id: serial("id").primaryKey(),
+
+    orderId: integer("order_id").notNull().references(() => orders.id),
+    orderItemId: integer("order_item_id").notNull().references(() => orderItems.id),
+    customerId: integer("customer_id").notNull().references(() => users.id),
+
+    // requested | approved | rejected | refunded
+    status: text("status").notNull().default("requested"),
+
+    reason: text("reason"),
+
+    requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+
+    decidedBy: integer("decided_by").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+
+    // ✅ record where we refunded to
+    refundMethod: text("refund_method"),
+    refundReference: text("refund_reference"),
+
+    refundAmount: numeric("refund_amount", { precision: 10, scale: 2 }),
+  },
+  (table) => ({
+    // One return request per order item (simple rule)
+    uniqueOrderItem: uniqueIndex("unique_return_request_order_item").on(table.orderItemId),
+  })
+);
 
 // CART ITEMS
 const cartItems = pgTable(
@@ -118,8 +170,6 @@ const wishlistItems = pgTable(
 );
 
 // REVIEWS
-// Rating is immediate.
-// Comment is moderated via status: none | pending | approved | rejected
 const reviews = pgTable(
   "reviews",
   {
@@ -128,15 +178,10 @@ const reviews = pgTable(
     productId: integer("product_id").notNull().references(() => products.id),
 
     rating: integer("rating").notNull(),
-
-    // nullable comment text
     comment: text("comment"),
 
-    // comment status state machine:
-    // none (no comment), pending (awaiting moderation), approved (public), rejected (not public)
     status: text("status").notNull().default("none"),
 
-    // moderation metadata
     moderatedBy: integer("moderated_by").references(() => users.id),
     moderatedAt: timestamp("moderated_at", { withTimezone: true }),
     rejectionReason: text("rejection_reason"),
@@ -144,7 +189,6 @@ const reviews = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
-    // Existing project rule: one review per user per product
     uniqueUserProductReview: uniqueIndex("unique_user_product_review").on(
       table.userId,
       table.productId
@@ -159,6 +203,7 @@ module.exports = {
   products,
   orders,
   orderItems,
+  returnRequests,
   cartItems,
   wishlistItems,
   reviews,
