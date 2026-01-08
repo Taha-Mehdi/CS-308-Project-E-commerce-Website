@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import StockBadge from "./StockBadge";
 
@@ -11,7 +12,7 @@ export default function ProductCard({
   product,
   wishlistIds,
   onWishlistToggle,
-  wishToggling,
+  wishToggling, // keep prop for parent compatibility (we just won't show "loading" behavior)
 }) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const imageUrl = product?.imageUrl ? `${apiBase}${product.imageUrl}` : null;
@@ -36,16 +37,50 @@ export default function ProductCard({
   const price = round2(priceNum).toFixed(2);
   const original = hasDiscount ? round2(originalNum).toFixed(2) : null;
 
-  const isWishlisted = wishlistIds ? wishlistIds.has(Number(product?.id)) : false;
+  const isWishlisted = useMemo(() => {
+    return wishlistIds ? wishlistIds.has(Number(product?.id)) : false;
+  }, [wishlistIds, product?.id]);
+
+  // local micro-animation flag (no loading UI)
+  const [wishPulse, setWishPulse] = useState(false);
+
+  // If the wishlisted state changes (optimistic update), pulse the heart.
+  useEffect(() => {
+    if (!product?.id) return;
+    setWishPulse(true);
+    const t = window.setTimeout(() => setWishPulse(false), 320);
+    return () => window.clearTimeout(t);
+  }, [isWishlisted, product?.id]);
 
   const handleWishlistClick = (e) => {
+    // Prevent Link navigation + prevent global loader capture
     e.preventDefault();
     e.stopPropagation();
+
+    // micro-feedback immediately
+    setWishPulse(true);
+    window.setTimeout(() => setWishPulse(false), 320);
+
     onWishlistToggle?.(product.id);
   };
 
   return (
     <div className="group min-w-0">
+      {/* Hydration-safe CSS (no styled-jsx, no random classnames) */}
+      <style>{`
+        @keyframes heartPop {
+          0% { transform: translateZ(0) scale(1); }
+          35% { transform: translateZ(0) scale(1.16) rotate(-6deg); }
+          70% { transform: translateZ(0) scale(0.96) rotate(4deg); }
+          100% { transform: translateZ(0) scale(1); }
+        }
+        @keyframes heartRing {
+          0% { transform: translateZ(0) scale(0.65); opacity: 0.0; }
+          25% { opacity: 0.55; }
+          100% { transform: translateZ(0) scale(1.55); opacity: 0; }
+        }
+      `}</style>
+
       <Link
         href={`/products/${product.id}`}
         className="
@@ -69,7 +104,7 @@ export default function ProductCard({
           aria-hidden="true"
         />
 
-        {/* IMAGE (shorter) */}
+        {/* IMAGE */}
         <div className="relative aspect-[4/5] overflow-hidden bg-black/10">
           {imageUrl ? (
             <img
@@ -92,12 +127,12 @@ export default function ProductCard({
             </div>
           )}
 
-          {/* lighter fade */}
+          {/* fade */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
 
-          {/* Price + wishlist (✅ same height) */}
+          {/* Price + wishlist */}
           <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2">
-            {/* ✅ Price pill is h-9 to match wishlist */}
+            {/* Price pill */}
             <div
               className="
                 min-w-0 inline-flex h-9 items-center gap-2
@@ -121,21 +156,34 @@ export default function ProductCard({
             {onWishlistToggle && (
               <button
                 type="button"
+                // This is the important part for your GlobalLoaderGate click-capture:
+                data-no-global-loader
                 onClick={handleWishlistClick}
-                disabled={wishToggling}
+                // we keep disabled state for safety, but we DO NOT show a loading UI
+                disabled={!!wishToggling}
                 className={[
-                  "shrink-0 grid place-items-center rounded-full",
+                  "relative shrink-0 grid place-items-center rounded-full",
                   "h-9 w-9",
-                  "border border-white/12 bg-black/45 backdrop-blur",
+                  "border border-white/12 backdrop-blur",
                   "shadow-[0_10px_30px_rgba(0,0,0,0.30)]",
                   "transition active:scale-95",
                   isWishlisted
                     ? "text-white bg-rose-500/85 hover:bg-rose-600/85 border-rose-400/30"
-                    : "text-white/80 hover:text-white hover:bg-black/60",
-                  wishToggling && "opacity-50 cursor-not-allowed",
+                    : "text-white/80 bg-black/45 hover:text-white hover:bg-black/60",
+                  wishPulse ? "animate-[heartPop_300ms_ease-out]" : "",
+                  wishToggling ? "opacity-60 cursor-not-allowed" : "",
                 ].join(" ")}
                 aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
               >
+                {/* ring pulse */}
+                {wishPulse && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-full border border-white/45"
+                    style={{ animation: "heartRing 320ms ease-out forwards" }}
+                  />
+                )}
+
                 <svg
                   className="h-4 w-4"
                   fill={isWishlisted ? "currentColor" : "none"}

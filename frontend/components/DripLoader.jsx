@@ -1,6 +1,6 @@
 "use client";
 
-export default function DripLoader() {
+export default function DripLoader({ label }) {
   const GOO_MATRIX =
     "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7";
 
@@ -26,10 +26,10 @@ export default function DripLoader() {
         <span className="absolute bottom-0 right-1/3 w-5 h-5 rounded-full bg-[var(--drip-accent)] animate-drip-210" />
       </div>
 
-      {/* Brand text */}
+      {/* Brand / label */}
       <div className="absolute bottom-10 text-center">
         <p className="text-[11px] tracking-[0.32em] uppercase text-gray-400">
-          SNEAKS-UP
+          {label || "SNEAKS-UP"}
         </p>
       </div>
     </div>

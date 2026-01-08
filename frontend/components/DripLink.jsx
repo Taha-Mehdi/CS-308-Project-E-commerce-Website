@@ -1,8 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useGlobalLoading } from "../context/GlobalLoadingContext";
+
+function isExternalHref(href) {
+  if (typeof href !== "string") return false;
+  return (
+    href.startsWith("http://") ||
+    href.startsWith("https://") ||
+    href.startsWith("mailto:") ||
+    href.startsWith("tel:")
+  );
+}
+
+function hrefToPath(href) {
+  if (typeof href === "string") return href;
+  // For Link objects, at least keep pathname
+  return href?.pathname || "/";
+}
 
 export default function DripLink({
   href,
@@ -17,7 +33,10 @@ export default function DripLink({
   ...rest
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { startLoading } = useGlobalLoading();
+
+  const dest = hrefToPath(href);
 
   return (
     <Link
@@ -42,18 +61,26 @@ export default function DripLink({
           return;
         }
 
-        // We control navigation to avoid flash + avoid click interruption
+        // Let external links behave normally
+        if (isExternalHref(dest)) {
+          onClick?.(e);
+          return;
+        }
+
+        // If user clicks link to same route, don't flash loader
+        if (dest === pathname) {
+          onClick?.(e);
+          return;
+        }
+
+        // We control navigation to avoid flash + ensure loader paints first
         e.preventDefault();
 
-        // show loader immediately
         startLoading();
-
-        // run any user handler (like closing mobile menu)
         onClick?.(e);
 
-        // navigate on next frame so loader paints first
         requestAnimationFrame(() => {
-          router.push(typeof href === "string" ? href : href?.pathname || "/");
+          router.push(dest);
         });
       }}
     >
