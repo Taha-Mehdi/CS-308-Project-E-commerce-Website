@@ -479,12 +479,26 @@ router.post("/", authMiddleware, async (req, res) => {
       });
 
       await tx.insert(orderItems).values(orderItemsToInsert);
-
+      
+      // changed
       for (const item of items) {
-        const p = productMap.get(item.productId);
-        const newStock = p.stock - item.quantity;
-        await tx.update(products).set({ stock: newStock }).where(eq(products.id, item.productId));
+        const updated = await tx
+          .update(products)
+          .set({ stock: sql`${products.stock} - ${item.quantity}` })
+          .where(
+            and(
+              eq(products.id, item.productId),
+              eq(products.isActive, true),
+              sql`${products.stock} >= ${item.quantity}`
+            )
+          )
+          .returning({ id: products.id });
+
+        if (updated.length === 0) {
+          throw new Error(`Not enough stock for product ${item.productId}`);
+        }
       }
+
 
       await tx.delete(cartItems).where(eq(cartItems.userId, userId));
 
