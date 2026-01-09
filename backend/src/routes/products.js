@@ -72,7 +72,9 @@ router.get("/", async (req, res) => {
   const { q, sortBy, sortOrder } = req.query;
 
   try {
-    let query = db.select().from(products);
+    // changed
+    let query = db.select().from(products).where(eq(products.isActive, true));
+
 
     if (q && q.trim() !== "") {
       const term = `%${q.trim()}%`;
