@@ -110,6 +110,8 @@ const requireAdmin = requireRole("product_manager");
 const requireSalesManager = requireRole("sales_manager");
 const requireProductManager = requireRole("product_manager");
 const requireProductManagerOrAdmin = requireAnyRole(["product_manager", "admin"]);
+const requireSupport = requireRole("support");
+
 
 module.exports = {
   authMiddleware,
@@ -119,4 +121,5 @@ module.exports = {
   requireSalesManager,
   requireProductManager,
   requireProductManagerOrAdmin,
+  requireSupport,
 };
