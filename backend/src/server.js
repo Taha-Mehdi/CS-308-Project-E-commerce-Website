@@ -21,6 +21,7 @@ const invoiceRoutes = require("./routes/invoice");
 const reviewsRoutes = require("./routes/reviews");
 const wishlistRoutes = require("./routes/wishlist");
 const analyticsRoutes = require("./routes/analytics");
+const chatRoutes = require("./routes/chat");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -103,6 +104,7 @@ app.use("/cart", cartRoutes);
 app.use("/invoice", invoiceRoutes);
 app.use("/reviews", reviewsRoutes);
 app.use("/wishlist", wishlistRoutes);
+app.use("/chat", chatRoutes);
 app.use("/analytics", analyticsRoutes);
 
 // Seed default roles on startup
@@ -144,8 +146,8 @@ supportNamespace.on("connection", (socket) => {
 
   console.log(`[support] socket connected: ${socket.id} (role=${role})`);
 
-  if (role === "admin") {
-    socket.join("admins");
+  if (role === "support") {
+    socket.join("support_agents");
     socket.emit("active_chats", Array.from(activeChats.values()));
   } else {
     const chatId = socket.handshake.query.chatId || socket.id;
@@ -162,11 +164,11 @@ supportNamespace.on("connection", (socket) => {
 
     socket.emit("chat_joined", chatInfo);
     supportNamespace
-      .to("admins")
+      .to("support_agents")
       .emit("active_chats", Array.from(activeChats.values()));
   }
 
-  if (role === "admin") {
+  if (role === "support") {
     socket.on("admin_join_chat", ({ chatId }) => {
       if (!chatId) return;
       socket.join(chatId);
@@ -194,19 +196,25 @@ supportNamespace.on("connection", (socket) => {
     });
   });
 
+
   socket.on("disconnect", () => {
     console.log(`[support] socket disconnected: ${socket.id} (role=${role})`);
-    if (role !== "admin") {
+
+    if (role !== "support") {
       const possibleChatId = socket.handshake.query.chatId || socket.id;
+
       if (activeChats.has(possibleChatId)) {
         activeChats.delete(possibleChatId);
+
         supportNamespace
-          .to("admins")
+          .to("support_agents")
           .emit("active_chats", Array.from(activeChats.values()));
       }
     }
   });
 });
+
+
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
