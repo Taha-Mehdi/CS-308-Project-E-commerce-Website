@@ -310,3 +310,75 @@ export async function applyDiscountApi({ productIds, discountRate }) {
     body: { productIds, discountRate },
   });
 }
+
+/* =========================
+   Chat
+========================= */
+
+export async function linkGuestChatApi(guestToken) {
+  if (!guestToken) return null;
+
+  return apiRequest("/chat/link", {
+    method: "POST",
+    auth: true,
+    body: { guestToken },
+  });
+}
+
+/**
+ * Secure chat attachment download
+ * - Uses Authorization header automatically (if logged in)
+ * - For guests, server access depends on x-guest-token (handled outside this helper)
+ *
+ * NOTE: For guest download support too, we'll call this with headers containing x-guest-token
+ * from the component (since api.js doesn't know guest token).
+ */
+export async function downloadChatAttachmentBlob(messageId, { headers = {} } = {}) {
+  const url = `${API_BASE_URL}/chat/attachments/${messageId}`;
+
+  const { token } = getStoredTokens();
+  const finalHeaders = { ...headers };
+  if (token) finalHeaders.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url, { headers: finalHeaders, cache: "no-store" });
+  if (!res.ok) {
+    let msg = "Failed to download attachment";
+    try {
+      const data = await res.json();
+      if (data?.message) msg = data.message;
+    } catch {
+      // ignore
+    }
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+
+  return await res.blob();
+}
+
+export function openBlobInNewTab(blob, filename = "attachment") {
+  if (typeof window === "undefined") return;
+  const url = URL.createObjectURL(blob);
+
+  // open in new tab
+  window.open(url, "_blank", "noopener,noreferrer");
+
+  // cleanup later
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+  // optional: could also force download via <a download>, but opening is nicer for PDF/images
+  // const a = document.createElement("a");
+  // a.href = url;
+  // a.download = filename;
+  // document.body.appendChild(a);
+  // a.click();
+  // a.remove();
+  // setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function downloadChatAttachmentOpen(messageId, filename, opts) {
+  const blob = await downloadChatAttachmentBlob(messageId, opts);
+  openBlobInNewTab(blob, filename || "attachment");
+  return true;
+}

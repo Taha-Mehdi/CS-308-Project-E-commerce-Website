@@ -8,6 +8,7 @@ const {
   numeric,
   varchar,
   uniqueIndex,
+  index,
 } = require("drizzle-orm/pg-core");
 
 // ROLES
@@ -95,10 +96,6 @@ const orderItems = pgTable("order_items", {
 
 /**
  * RETURN REQUESTS (Selective Return + Refund)
- * Flow:
- * - customer creates request within 30 days & only if delivered
- * - sales_manager decides approve/reject
- * - once received back, sales_manager marks received -> refunds + restocks + emails customer
  */
 const returnRequests = pgTable(
   "return_requests",
@@ -130,7 +127,6 @@ const returnRequests = pgTable(
     refundAmount: numeric("refund_amount", { precision: 10, scale: 2 }),
   },
   (table) => ({
-    // One return request per order item (simple rule)
     uniqueOrderItem: uniqueIndex("unique_return_request_order_item").on(table.orderItemId),
   })
 );
@@ -145,10 +141,7 @@ const cartItems = pgTable(
     quantity: integer("quantity").notNull().default(1),
   },
   (table) => ({
-    uniqueUserProduct: uniqueIndex("unique_user_product_cart").on(
-      table.userId,
-      table.productId
-    ),
+    uniqueUserProduct: uniqueIndex("unique_user_product_cart").on(table.userId, table.productId),
   })
 );
 
@@ -196,6 +189,67 @@ const reviews = pgTable(
   })
 );
 
+/* =========================
+   CHAT (REQ #13)
+========================= */
+
+// Conversations: guest OR logged-in. Support agent can claim.
+const conversations = pgTable(
+  "conversations",
+  {
+    id: serial("id").primaryKey(),
+
+    // if logged-in
+    customerUserId: integer("customer_user_id").references(() => users.id),
+
+    // if guest (random UUID string)
+    guestToken: varchar("guest_token", { length: 64 }),
+
+    // open | claimed | closed
+    status: text("status").notNull().default("open"),
+
+    // support agent user id (role=support)
+    assignedAgentId: integer("assigned_agent_id").references(() => users.id),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    idxCustomer: index("idx_conversations_customer_user_id").on(table.customerUserId),
+    idxGuestToken: index("idx_conversations_guest_token").on(table.guestToken),
+    idxAssigned: index("idx_conversations_assigned_agent_id").on(table.assignedAgentId),
+    idxStatus: index("idx_conversations_status").on(table.status),
+  })
+);
+
+const messages = pgTable(
+  "messages",
+  {
+    id: serial("id").primaryKey(),
+    conversationId: integer("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+
+    // customer | guest | support
+    senderRole: text("sender_role").notNull(),
+    senderUserId: integer("sender_user_id").references(() => users.id),
+
+    text: text("text"),
+
+    // Attachment metadata (we'll add upload endpoint next step)
+    attachmentUrl: varchar("attachment_url", { length: 1024 }),
+    attachmentName: varchar("attachment_name", { length: 255 }),
+    attachmentMime: varchar("attachment_mime", { length: 255 }),
+    attachmentSize: integer("attachment_size"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    idxConversation: index("idx_messages_conversation_id").on(table.conversationId),
+    idxCreatedAt: index("idx_messages_created_at").on(table.createdAt),
+  })
+);
+
 module.exports = {
   roles,
   categories,
@@ -207,4 +261,8 @@ module.exports = {
   cartItems,
   wishlistItems,
   reviews,
+
+  // ✅ chat
+  conversations,
+  messages,
 };

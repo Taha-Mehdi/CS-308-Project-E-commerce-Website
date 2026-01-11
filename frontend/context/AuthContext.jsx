@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { clearStoredTokens, addToCartApi } from "../lib/api";
+import { clearStoredTokens, addToCartApi, linkGuestChatApi } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -132,6 +132,15 @@ export function AuthProvider({ children }) {
           localStorage.setItem("refreshToken", newRefreshToken);
         }
 
+        // 🔗 Link guest chat → user (best-effort, non-blocking)
+        const guestToken = localStorage.getItem("guestChatToken");
+        if (guestToken) {
+          linkGuestChatApi(guestToken).catch((err) => {
+            console.warn("Guest chat link failed:", err);
+          });
+        }
+
+        // Existing behavior
         mergeGuestCartIntoServer(newUser);
       }
     } catch (err) {

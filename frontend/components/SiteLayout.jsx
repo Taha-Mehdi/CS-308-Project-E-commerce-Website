@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import DripLink from "./DripLink";
+import ChatWidget from "./ChatWidget";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 
@@ -434,6 +435,9 @@ export default function SiteLayout({ children }) {
           </p>
         </div>
       </footer>
+
+      {/* ✅ Global Live Chat (available on every page) */}
+      <ChatWidget />
     </div>
   );
 }
