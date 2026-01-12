@@ -75,10 +75,10 @@ export default function SalesInvoicesPage() {
       const data = await getInvoicesRangeApi(from, to);
 
       const list =
-        (Array.isArray(data) && data) ||
-        (Array.isArray(data?.invoices) && data.invoices) ||
-        (Array.isArray(data?.orders) && data.orders) ||
-        [];
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.invoices) && data.invoices) ||
+          (Array.isArray(data?.orders) && data.orders) ||
+          [];
 
       setInvoices(list);
       if (list.length === 0) setMessage("No invoices found for this range.");
@@ -142,143 +142,157 @@ export default function SalesInvoicesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
-            Sneaks-up · Sales
-          </p>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
-            Invoices
-          </h1>
-          <p className="text-sm text-gray-300/70">
-            View invoices in a date range, print, or save as PDF.
-          </p>
-        </div>
-
-        <DripLink
-          href="/sales-admin"
-          className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
-        >
-          Back to sales panel →
-        </DripLink>
-      </div>
-
-      {message && (
-        <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
-          {message}
-        </div>
-      )}
-
-      <div className={panelClass()}>
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-          <div className="space-y-2">
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-              From
-            </label>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="h-10 w-full rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-            />
+      <div className="space-y-6">
+        <div className="flex items-end justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold tracking-[0.32em] uppercase text-gray-300/70">
+              Sneaks-up · Sales
+            </p>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+              Invoices
+            </h1>
+            <p className="text-sm text-gray-300/70">
+              View invoices in a date range, print, or save as PDF.
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-              To
-            </label>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="h-10 w-full rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-            />
-          </div>
+          <DripLink
+              href="/sales-admin"
+              className="text-[11px] text-gray-200/70 underline underline-offset-4 hover:text-white"
+          >
+            Back to sales panel →
+          </DripLink>
+        </div>
 
-          <button
-            type="button"
-            disabled={!canSearch || loading}
-            onClick={handleSearch}
-            className="
+        {message && (
+            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-[11px] text-gray-200/80">
+              {message}
+            </div>
+        )}
+
+        <div className={panelClass()}>
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                From
+              </label>
+              {/* ✅ FIXED: Placeholder technique */}
+              <input
+                  type={from ? "date" : "text"}
+                  placeholder="mm/dd/yyyy"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  onFocus={(e) => (e.target.type = "date")}
+                  onBlur={(e) => {
+                    if (!e.target.value) e.target.type = "text";
+                  }}
+                  style={{ colorScheme: "dark" }}
+                  className="h-10 w-full rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                To
+              </label>
+              {/* ✅ FIXED: Placeholder technique */}
+              <input
+                  type={to ? "date" : "text"}
+                  placeholder="mm/dd/yyyy"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  onFocus={(e) => (e.target.type = "date")}
+                  onBlur={(e) => {
+                    if (!e.target.value) e.target.type = "text";
+                  }}
+                  style={{ colorScheme: "dark" }}
+                  className="h-10 w-full rounded-full border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/15"
+              />
+            </div>
+
+            <button
+                type="button"
+                disabled={!canSearch || loading}
+                onClick={handleSearch}
+                className="
               h-10 px-5 rounded-full
               bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
               text-black text-[11px] font-semibold uppercase tracking-[0.18em]
               hover:opacity-95 transition active:scale-[0.98]
               disabled:opacity-60 disabled:cursor-not-allowed
             "
-          >
-            {loading ? "Loading…" : "Search"}
-          </button>
+            >
+              {loading ? "Loading…" : "Search"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-4">
-        {invoices.map((inv) => {
-          const orderId = inv.id ?? inv.orderId ?? inv.order_id;
-          const total = Number(inv.total ?? inv.amount ?? inv.totalAmount ?? 0);
+        <div className="space-y-4">
+          {invoices.map((inv) => {
+            const orderId = inv.id ?? inv.orderId ?? inv.order_id;
+            const total = Number(inv.total ?? inv.amount ?? inv.totalAmount ?? 0);
 
-          return (
-            <div key={orderId} className={panelClass()}>
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
-                    Invoice #{orderId}
-                  </p>
-                  <p className="text-sm text-white font-semibold">
-                    ${Number.isNaN(total) ? "0.00" : total.toFixed(2)}
-                  </p>
-                  <p className="text-[11px] text-gray-300/60">
-                    Created: {fmtDate(inv.createdAt ?? inv.created_at ?? inv.date)}
-                  </p>
-                  <p className="text-[11px] text-gray-300/60">
-                    Status: {inv.status || "—"}
-                  </p>
-                </div>
+            return (
+                <div key={orderId} className={panelClass()}>
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-300/70">
+                        Invoice #{orderId}
+                      </p>
+                      <p className="text-sm text-white font-semibold">
+                        ${Number.isNaN(total) ? "0.00" : total.toFixed(2)}
+                      </p>
+                      <p className="text-[11px] text-gray-300/60">
+                        Created: {fmtDate(inv.createdAt ?? inv.created_at ?? inv.date)}
+                      </p>
+                      <p className="text-[11px] text-gray-300/60">
+                        Status: {inv.status || "—"}
+                      </p>
+                    </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={downloadingId === orderId}
-                    onClick={() => handlePrint(orderId)}
-                    className="
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                          type="button"
+                          disabled={downloadingId === orderId}
+                          onClick={() => handlePrint(orderId)}
+                          className="
                       h-10 px-5 rounded-full border border-border bg-white/5
                       text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-100
                       hover:bg-white/10 transition active:scale-[0.98]
                       disabled:opacity-60 disabled:cursor-not-allowed
                     "
-                  >
-                    {downloadingId === orderId ? "Opening…" : "Print"}
-                  </button>
+                      >
+                        {downloadingId === orderId ? "Opening…" : "Print"}
+                      </button>
 
-                  <button
-                    type="button"
-                    disabled={downloadingId === orderId}
-                    onClick={() => handleSavePdf(orderId)}
-                    className="
+                      <button
+                          type="button"
+                          disabled={downloadingId === orderId}
+                          onClick={() => handleSavePdf(orderId)}
+                          className="
                       h-10 px-5 rounded-full
                       bg-gradient-to-r from-[var(--drip-accent)] to-[var(--drip-accent-2)]
                       text-black text-[11px] font-semibold uppercase tracking-[0.18em]
                       hover:opacity-95 transition active:scale-[0.98]
                       disabled:opacity-60 disabled:cursor-not-allowed
                     "
-                  >
-                    {downloadingId === orderId ? "Saving…" : "Save PDF"}
-                  </button>
+                      >
+                        {downloadingId === orderId ? "Saving…" : "Save PDF"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        {!loading && invoices.length === 0 && (
-          <div className={panelClass()}>
-            <p className="text-sm text-gray-300/70">
-              Pick a date range and click Search.
-            </p>
-          </div>
-        )}
+          {!loading && invoices.length === 0 && (
+              <div className={panelClass()}>
+                <p className="text-sm text-gray-300/70">
+                  Pick a date range and click Search.
+                </p>
+              </div>
+          )}
+        </div>
       </div>
-    </div>
   );
 }
