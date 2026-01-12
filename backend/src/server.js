@@ -23,7 +23,7 @@ const analyticsRoutes = require("./routes/analytics");
 const chatRoutes = require("./routes/chat");
 const returnRoutes = require("./routes/returns");
 
-const { conversations, messages } = require("./db/schema");
+const { conversations, messages, roles } = require("./db/schema");
 const { eq, and, isNull } = require("drizzle-orm");
 
 const app = express();
@@ -31,11 +31,9 @@ const PORT = process.env.PORT || 4000;
 
 app.set("trust proxy", 1);
 
-// Serve uploaded product images (keep as-is)
 const uploadDir = path.join(__dirname, "..", "uploads");
 app.use("/uploads", express.static(uploadDir));
 
-// Global middlewares
 app.use(helmet());
 app.use(
   cors({
@@ -56,7 +54,6 @@ app.use(
   })
 );
 
-// Routes
 app.use("/api/returns", returnRoutes);
 app.use("/auth", authRoutes);
 app.use("/products", productRoutes);
@@ -71,14 +68,12 @@ app.use("/analytics", analyticsRoutes);
 
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
-// HTTP + Socket.IO
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
-// allow routes to emit socket events (attachments via REST)
 app.set("io", io);
 
 function roomName(conversationId) {
@@ -105,17 +100,17 @@ function parseSocketAuth(socket) {
   return { user, guestToken };
 }
 
-async function canAccessConversation({ user, guestToken }, conv, { requireAssignedForSupportSend = true } = {}) {
+async function canAccessConversation(
+  { user, guestToken },
+  conv,
+  { requireAssignedForSupportSend = true } = {}
+) {
   if (!conv) return { ok: false, error: "Conversation not found" };
 
-  // Block messaging to closed conv (policy)
-  // Joining to read history is still allowed if access checks pass.
-  // The send handler checks status again.
   if (user?.roleName === "support") {
     const isAssigned = conv.assignedAgentId && Number(conv.assignedAgentId) === Number(user.id);
     const isUnclaimedOpen = conv.status === "open" && !conv.assignedAgentId;
 
-    // Support can join if assigned OR if it is unclaimed open (queue preview)
     if (!isAssigned && !isUnclaimedOpen) return { ok: false, error: "Access denied" };
 
     if (requireAssignedForSupportSend && !isAssigned) {
@@ -131,7 +126,6 @@ async function canAccessConversation({ user, guestToken }, conv, { requireAssign
     return { ok: true };
   }
 
-  // guest
   if (!guestToken || !conv.guestToken || guestToken !== conv.guestToken) {
     return { ok: false, error: "Access denied" };
   }
@@ -173,7 +167,9 @@ io.on("connection", (socket) => {
       }
 
       const id = Number(conversationId);
-      if (!Number.isInteger(id) || id <= 0) return ack?.({ ok: false, error: "Invalid conversationId" });
+      if (!Number.isInteger(id) || id <= 0) {
+        return ack?.({ ok: false, error: "Invalid conversationId" });
+      }
 
       const updatedRows = await db
         .update(conversations)
@@ -194,6 +190,9 @@ io.on("connection", (socket) => {
       const updated = updatedRows?.[0] || null;
       if (!updated) return ack?.({ ok: false, error: "Conversation already claimed" });
 
+      // Make sure claimer is in the room immediately (prevents “message not showing”)
+      socket.join(roomName(id));
+
       io.to("support_agents").emit("queue_updated", { type: "claimed", conversation: updated });
       return ack?.({ ok: true, conversation: updated });
     } catch (err) {
@@ -205,12 +204,16 @@ io.on("connection", (socket) => {
   socket.on("join_conversation", async ({ conversationId }, ack) => {
     try {
       const id = Number(conversationId);
-      if (!Number.isInteger(id) || id <= 0) return ack?.({ ok: false, error: "Invalid conversationId" });
+      if (!Number.isInteger(id) || id <= 0) {
+        return ack?.({ ok: false, error: "Invalid conversationId" });
+      }
 
       const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
-      const access = await canAccessConversation({ user: socket.user, guestToken: socket.guestToken }, conv, {
-        requireAssignedForSupportSend: false,
-      });
+      const access = await canAccessConversation(
+        { user: socket.user, guestToken: socket.guestToken },
+        conv,
+        { requireAssignedForSupportSend: false }
+      );
       if (!access.ok) return ack?.({ ok: false, error: access.error });
 
       socket.join(roomName(id));
@@ -224,7 +227,9 @@ io.on("connection", (socket) => {
   socket.on("message_send", async ({ conversationId, text }, ack) => {
     try {
       const id = Number(conversationId);
-      if (!Number.isInteger(id) || id <= 0) return ack?.({ ok: false, error: "Invalid conversationId" });
+      if (!Number.isInteger(id) || id <= 0) {
+        return ack?.({ ok: false, error: "Invalid conversationId" });
+      }
 
       const t = ensureString(text);
       if (!t) return ack?.({ ok: false, error: "Message text required" });
@@ -232,13 +237,17 @@ io.on("connection", (socket) => {
       const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
       if (!conv) return ack?.({ ok: false, error: "Conversation not found" });
 
-      // Policy: closed conversations are read-only
       if (conv.status === "closed") return ack?.({ ok: false, error: "Conversation is closed" });
 
-      const access = await canAccessConversation({ user: socket.user, guestToken: socket.guestToken }, conv, {
-        requireAssignedForSupportSend: true,
-      });
+      const access = await canAccessConversation(
+        { user: socket.user, guestToken: socket.guestToken },
+        conv,
+        { requireAssignedForSupportSend: true }
+      );
       if (!access.ok) return ack?.({ ok: false, error: access.error });
+
+      // ✅ CRITICAL: ensure sender is actually in the room before emit
+      socket.join(roomName(id));
 
       const senderRole =
         socket.user?.roleName === "support" ? "support" : socket.user ? "customer" : "guest";
@@ -257,23 +266,28 @@ io.on("connection", (socket) => {
       await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, id));
 
       io.to(roomName(id)).emit("message_new", msg);
-      return ack?.({ ok: true });
+
+      // ✅ return the message too (UI can append even if socket events lag)
+      return ack?.({ ok: true, message: msg });
     } catch (err) {
       console.error("message_send error:", err);
       return ack?.({ ok: false, error: "Send failed" });
     }
   });
 
-  // ✅ Typing indicator (ephemeral)
   socket.on("typing", async ({ conversationId, isTyping }, ack) => {
     try {
       const id = Number(conversationId);
-      if (!Number.isInteger(id) || id <= 0) return ack?.({ ok: false, error: "Invalid conversationId" });
+      if (!Number.isInteger(id) || id <= 0) {
+        return ack?.({ ok: false, error: "Invalid conversationId" });
+      }
 
       const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
-      const access = await canAccessConversation({ user: socket.user, guestToken: socket.guestToken }, conv, {
-        requireAssignedForSupportSend: false,
-      });
+      const access = await canAccessConversation(
+        { user: socket.user, guestToken: socket.guestToken },
+        conv,
+        { requireAssignedForSupportSend: false }
+      );
       if (!access.ok) return ack?.({ ok: false, error: access.error });
 
       socket.to(roomName(id)).emit("typing", {
@@ -289,7 +303,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ✅ Read receipts (ephemeral)
   socket.on("message_read", async ({ conversationId, messageId }, ack) => {
     try {
       const cid = Number(conversationId);
@@ -298,12 +311,13 @@ io.on("connection", (socket) => {
       if (!Number.isInteger(mid) || mid <= 0) return ack?.({ ok: false, error: "Invalid messageId" });
 
       const [conv] = await db.select().from(conversations).where(eq(conversations.id, cid));
-      const access = await canAccessConversation({ user: socket.user, guestToken: socket.guestToken }, conv, {
-        requireAssignedForSupportSend: false,
-      });
+      const access = await canAccessConversation(
+        { user: socket.user, guestToken: socket.guestToken },
+        conv,
+        { requireAssignedForSupportSend: false }
+      );
       if (!access.ok) return ack?.({ ok: false, error: access.error });
 
-      // Optionally verify the message belongs to this conversation
       const [msg] = await db.select().from(messages).where(eq(messages.id, mid));
       if (!msg || Number(msg.conversationId) !== cid) return ack?.({ ok: false, error: "Message not found" });
 
@@ -321,7 +335,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// ✅ Fix: ensureDefaultRoles was using await without async in your original file
 async function ensureDefaultRoles() {
   const query = `
     INSERT INTO roles (name) VALUES
