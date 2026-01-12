@@ -249,6 +249,22 @@ export default function AccountPage() {
                   </div>
                 </div>
 
+                {/* ✅ ADDED: Customer ID */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60 mb-2">Customer ID</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-white font-semibold">#{user.id}</span>
+                  </div>
+                </div>
+
+                {/* ✅ ADDED: Tax ID */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60 mb-2">Tax ID</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-white font-semibold">{user.taxId || "—"}</span>
+                  </div>
+                </div>
+
                 <div className="sm:col-span-2 lg:col-span-1">
                   <p className="text-[10px] uppercase tracking-[0.24em] text-gray-300/60 mb-2">Shipping Address</p>
                   <div className="flex items-center gap-2">
