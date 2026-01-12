@@ -144,11 +144,15 @@ export default function SiteLayout({ children }) {
       []
   );
 
-  // Calculate panel link if privileged
+  // ✅ FIXED: Added "support" role to the panel logic
   const panelHref = useMemo(() => {
     if (!user) return null;
-    if (user.roleName === "product_manager") return "/admin";
-    if (user.roleName === "sales_manager") return "/sales-admin";
+    const role = (user.roleName || "").toLowerCase();
+
+    if (role === "product_manager") return "/admin";
+    if (role === "sales_manager") return "/sales-admin";
+    if (role === "support") return "/support"; // Added this line
+
     return null;
   }, [user]);
 
