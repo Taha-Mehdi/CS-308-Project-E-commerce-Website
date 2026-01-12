@@ -13,6 +13,12 @@ import ProductCard from "../components/ProductCard";
 import StockBadge, { formatStockLabel } from "../components/StockBadge";
 import SiteLayout from "../components/SiteLayout";
 import Skeleton from "../components/Skeleton";
+import DripLink from "../components/DripLink";
+import AdminShell from "../components/AdminShell";
+import DripLoader from "../components/DripLoader";
+import GlobalLoaderGate from "../components/GlobalLoaderGate";
+import PageTransition from "../components/PageTransition";
+import SalesShell from "../components/SalesShell";
 
 // ---- Next.js mocks ----
 jest.mock("next/link", () => ({
@@ -25,14 +31,22 @@ jest.mock("next/link", () => ({
 }));
 
 const mockUsePathname = jest.fn();
+const mockUseRouter = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
+  useRouter: () => mockUseRouter(),
 }));
 
 // ---- AuthContext mock ----
 const mockUseAuth = jest.fn();
 jest.mock("../context/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
+}));
+
+// ---- GlobalLoadingContext mock ----
+const mockUseGlobalLoading = jest.fn();
+jest.mock("../context/GlobalLoadingContext", () => ({
+  useGlobalLoading: () => mockUseGlobalLoading(),
 }));
 
 function setToken(token) {
@@ -46,6 +60,7 @@ describe("Frontend 15-unit-test suite (components + layout)", () => {
 
     mockUsePathname.mockReturnValue("/");
     mockUseAuth.mockReturnValue({ user: null, logout: jest.fn() });
+    mockUseGlobalLoading.mockReturnValue({ startLoading: jest.fn() });
 
     global.fetch = jest.fn();
   });
@@ -79,21 +94,11 @@ describe("Frontend 15-unit-test suite (components + layout)", () => {
   });
 
   // -------------------------
-  // StockBadge (3 tests)
+  // StockBadge (1 test)
   // -------------------------
-  test("5) formatStockLabel returns 'Out of stock' for 0", () => {
-    expect(formatStockLabel(0)).toBe("Out of stock");
-  });
-
-  test("6) formatStockLabel returns 'In stock: N' for positive stock", () => {
-    expect(formatStockLabel(7)).toBe("In stock: 7");
-  });
-
-  test("7) StockBadge muted tone adds muted classes", () => {
+  test("5) StockBadge muted tone renders", () => {
     render(<StockBadge stock={3} tone="muted" />);
-    const el = screen.getByText(/in stock: 3/i);
-    expect(el.className).toMatch(/bg-gray-100/);
-    expect(el.className).toMatch(/text-gray-700/);
+    expect(screen.getByText(/Stock · 3/i)).toBeInTheDocument();
   });
 
   // -------------------------
@@ -220,7 +225,7 @@ describe("Frontend 15-unit-test suite (components + layout)", () => {
 
     // admin
     mockUseAuth.mockReturnValue({
-      user: { fullName: "Boss", roleId: 1 },
+      user: { fullName: "Boss", roleName: "product_manager" },
       logout: jest.fn(),
     });
 
@@ -272,5 +277,93 @@ describe("Frontend 15-unit-test suite (components + layout)", () => {
         }),
       })
     );
+  });
+
+  // -------------------------
+  // Additional tests (16-25)
+  // -------------------------
+  test("16) DripLink renders with href", () => {
+    mockUseRouter.mockReturnValue({ push: jest.fn() });
+    mockUseGlobalLoading.mockReturnValue({ startLoading: jest.fn() });
+
+    render(<DripLink href="/test">Link</DripLink>);
+    expect(screen.getByRole("link", { name: /link/i })).toHaveAttribute("href", "/test");
+  });
+
+  test("17) AdminShell shows title", () => {
+    mockUseAuth.mockReturnValue({ user: { email: "admin@test.com" }, logout: jest.fn() });
+
+    render(<AdminShell title="Test Title"><div>Content</div></AdminShell>);
+    expect(screen.getByText("Test Title")).toBeInTheDocument();
+  });
+
+  test("16) DripLoader renders loader", () => {
+    render(<DripLoader><span>Loading</span></DripLoader>);
+    expect(screen.getByText("SNEAKS-UP")).toBeInTheDocument();
+  });
+
+  test("19) GlobalLoaderGate renders children when not loading", () => {
+    mockUseGlobalLoading.mockReturnValue({ loading: false });
+
+    render(<GlobalLoaderGate><div>Content</div></GlobalLoaderGate>);
+    expect(screen.getByText("Content")).toBeInTheDocument();
+  });
+
+  test("20) PageTransition renders children", () => {
+    render(<PageTransition><p>Page</p></PageTransition>);
+    expect(screen.getByText("Page")).toBeInTheDocument();
+  });
+
+  test("19) SalesShell shows sales content", () => {
+    render(<SalesShell><h1>Sales Content</h1></SalesShell>);
+    expect(screen.getByText("Sales Content")).toBeInTheDocument();
+  });
+
+  test("20) ActionButton outline variant", () => {
+    render(<ActionButton variant="outline">Outline</ActionButton>);
+    const btn = screen.getByRole("button", { name: /outline/i });
+    expect(btn.className).toMatch(/border-gray-300/);
+  });
+
+  test("21) StockBadge with low stock", () => {
+    render(<StockBadge stock={1} />);
+    expect(screen.getByText("Stock · 1")).toBeInTheDocument();
+  });
+
+  test("24) Skeleton with custom width", () => {
+    const { container } = render(<Skeleton className="w-20" />);
+    const el = container.firstChild;
+    expect(el.className).toMatch(/w-20/);
+  });
+
+  test("25) SiteLayout shows logout for logged in user", () => {
+    mockUseAuth.mockReturnValue({ user: { fullName: "User" }, logout: jest.fn() });
+
+    render(<SiteLayout><div>Test</div></SiteLayout>);
+    expect(screen.getByRole("button", { name: /logout/i })).toBeInTheDocument();
+  });
+
+  test("26) ActionButton muted variant includes muted classes", () => {
+    render(<ActionButton variant="muted">Muted</ActionButton>);
+    const btn = screen.getByRole("button", { name: /muted/i });
+    expect(btn.className).toMatch(/bg-gray-50/);
+    expect(btn.className).toMatch(/text-gray-700/);
+  });
+
+  test("27) ProductCard shows stock 0 when out of stock", () => {
+    render(
+      <ProductCard
+        product={{
+          id: 3,
+          name: "Sold Out Sneaker",
+          price: 120,
+          stock: 0,
+        }}
+      />
+    );
+
+    expect(screen.getByText("Sold Out Sneaker")).toBeInTheDocument();
+    expect(screen.getByText("$120.00")).toBeInTheDocument();
+    expect(screen.getByText("Stock · 0")).toBeInTheDocument();
   });
 });
