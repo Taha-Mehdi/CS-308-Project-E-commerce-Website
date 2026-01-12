@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 /* -------------------------
    Token storage
@@ -28,8 +28,8 @@ export function clearStoredTokens() {
    Fetch helper
 ------------------------- */
 export async function apiRequest(
-  path,
-  { method = "GET", body, auth = false, headers = {} } = {}
+    path,
+    { method = "GET", body, auth = false, headers = {} } = {}
 ) {
   const url = `${API_BASE_URL}${path}`;
 
@@ -141,23 +141,27 @@ export async function addToCartApi(arg1, arg2 = 1) {
     quantity = arg2;
   }
 
-  return apiRequest("/cart", {
+  // ✅ FIXED: Point to /cart/add (POST) matches backend routes/cart.js
+  return apiRequest("/cart/add", {
     method: "POST",
     auth: true,
     body: { productId, quantity },
   });
 }
 
-export async function updateCartItemApi(itemId, quantity) {
-  return apiRequest(`/cart/${itemId}`, {
-    method: "PATCH",
+export async function updateCartItemApi(productId, quantity) {
+  // ✅ FIXED: Point to /cart/update (PUT) matches backend routes/cart.js
+  // Also ensures body contains productId, as backend requires it in body
+  return apiRequest(`/cart/update`, {
+    method: "PUT",
     auth: true,
-    body: { quantity },
+    body: { productId, quantity },
   });
 }
 
-export async function removeFromCartApi(itemId) {
-  return apiRequest(`/cart/${itemId}`, {
+export async function removeFromCartApi(productId) {
+  // ✅ FIXED: Point to /cart/remove/:productId (DELETE) matches backend routes/cart.js
+  return apiRequest(`/cart/remove/${productId}`, {
     method: "DELETE",
     auth: true,
   });
@@ -172,8 +176,8 @@ export async function createOrderApi(items, shippingAddress, paymentMethod) {
     method: "POST",
     auth: true,
     body: paymentMethod
-      ? { items, shippingAddress, paymentMethod }
-      : { items, shippingAddress },
+        ? { items, shippingAddress, paymentMethod }
+        : { items, shippingAddress },
   });
 }
 
@@ -366,15 +370,6 @@ export function openBlobInNewTab(blob, filename = "attachment") {
 
   // cleanup later
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-  // optional: could also force download via <a download>, but opening is nicer for PDF/images
-  // const a = document.createElement("a");
-  // a.href = url;
-  // a.download = filename;
-  // document.body.appendChild(a);
-  // a.click();
-  // a.remove();
-  // setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function downloadChatAttachmentOpen(messageId, filename, opts) {
