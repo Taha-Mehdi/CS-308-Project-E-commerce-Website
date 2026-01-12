@@ -16,18 +16,7 @@ function Section({ title, children }) {
   );
 }
 
-function AttachmentChip({ url, onOpen }) {
-  const label = useMemo(() => {
-    try {
-      const u = new URL(url);
-      const p = u.pathname.split("/").pop();
-      return p || "Attachment";
-    } catch {
-      const p = String(url).split("/").pop();
-      return p || "Attachment";
-    }
-  }, [url]);
-
+function AttachmentChip({ label, onOpen }) {
   return (
     <button
       type="button"
@@ -38,7 +27,7 @@ function AttachmentChip({ url, onOpen }) {
       <span className="rounded-full bg-black/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">
         File
       </span>
-      <span className="truncate max-w-[260px]">{label}</span>
+      <span className="truncate max-w-[260px]">{label || "Attachment"}</span>
     </button>
   );
 }
@@ -54,6 +43,7 @@ export default function SupportChatPanel({
 
   const [messages, setMessages] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
   const [context, setContext] = useState(null);
   const [loadingContext, setLoadingContext] = useState(false);
 
@@ -67,18 +57,58 @@ export default function SupportChatPanel({
   const [showContext, setShowContext] = useState(true);
 
   const fileRef = useRef(null);
+
+  // scroll handling
   const listRef = useRef(null);
+  const bottomRef = useRef(null);
+  const [stickToBottom, setStickToBottom] = useState(true);
 
   const headerAuth = useMemo(() => {
     if (!token) return {};
     return { Authorization: `Bearer ${token}` };
   }, [token]);
 
+  // reset when conversation changes
   useEffect(() => {
-    if (!listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
+    setMessages([]);
+    setText("");
+    setError("");
+    setTypingState({ active: false, role: null });
+    setJoined(false);
+    setStickToBottom(true);
+  }, [conversationId]);
+
+  // detect whether user is near bottom (prevents yanking scroll)
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const threshold = 100;
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setStickToBottom(dist < threshold);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [conversationId, showContext]);
+
+  const scrollToBottom = (behavior = "auto") => {
+    if (!bottomRef.current) return;
+    bottomRef.current.scrollIntoView({ block: "end", behavior });
+  };
+
+  // scroll to bottom on new messages only if user is at bottom
+  useEffect(() => {
+    if (stickToBottom) {
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
+  // ✅ Load message history (backend returns ARRAY)
   useEffect(() => {
     if (!conversationId) return;
     let alive = true;
@@ -89,11 +119,22 @@ export default function SupportChatPanel({
       try {
         const res = await fetch(`${API_BASE}/chat/${conversationId}/messages`, {
           headers: headerAuth,
+          cache: "no-store",
         });
         if (!res.ok) throw new Error("Failed to load messages");
+
         const body = await res.json();
+
+        const arr = Array.isArray(body)
+          ? body
+          : Array.isArray(body?.messages)
+          ? body.messages
+          : [];
+
         if (!alive) return;
-        setMessages(Array.isArray(body?.messages) ? body.messages : []);
+        setMessages(arr);
+
+        requestAnimationFrame(() => scrollToBottom("auto"));
       } catch (e) {
         if (!alive) return;
         setError(e?.message || "Failed to load messages");
@@ -108,6 +149,7 @@ export default function SupportChatPanel({
     };
   }, [conversationId, headerAuth]);
 
+  // Context
   useEffect(() => {
     if (!conversationId) return;
     let alive = true;
@@ -117,6 +159,7 @@ export default function SupportChatPanel({
       try {
         const res = await fetch(`${API_BASE}/chat/${conversationId}/context`, {
           headers: headerAuth,
+          cache: "no-store",
         });
 
         if (!res.ok) {
@@ -142,25 +185,33 @@ export default function SupportChatPanel({
     };
   }, [conversationId, headerAuth]);
 
+  // ✅ Socket subscription (also fixes conversationId type mismatch)
   useEffect(() => {
     if (!socket || !conversationId) return;
 
+    const cid = Number(conversationId);
     setJoined(false);
-    socket.emit("join_conversation", { conversationId });
+
+    socket.emit("join_conversation", { conversationId: cid });
     setJoined(true);
 
     const onNewMessage = (payload) => {
       if (!payload) return;
-      if (payload.conversationId !== conversationId) return;
+      const incomingCid = Number(payload.conversationId);
+      if (incomingCid !== cid) return;
 
       setMessages((prev) => {
         if (payload.id && prev.some((x) => x.id === payload.id)) return prev;
         return [...prev, payload];
       });
+
+      if (stickToBottom) {
+        requestAnimationFrame(() => scrollToBottom("smooth"));
+      }
     };
 
-    const onTyping = ({ conversationId: cid, active, role }) => {
-      if (cid !== conversationId) return;
+    const onTyping = ({ conversationId: incoming, active, role }) => {
+      if (Number(incoming) !== cid) return;
       setTypingState({ active: !!active, role: role || null });
     };
 
@@ -171,10 +222,11 @@ export default function SupportChatPanel({
       socket.off("message_new", onNewMessage);
       socket.off("typing", onTyping);
     };
-  }, [socket, conversationId]);
+  }, [socket, conversationId, stickToBottom]);
 
   async function sendText() {
     if (!socket || !conversationId) return;
+
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -184,21 +236,28 @@ export default function SupportChatPanel({
     const tmpId = `tmp-${Date.now()}`;
     const optimistic = {
       id: tmpId,
-      conversationId,
+      conversationId: Number(conversationId),
       senderRole: "support",
       text: trimmed,
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    socket.emit("message_send", { conversationId, text: trimmed }, (res) => {
-      if (!res?.ok) {
-        setError(res?.error || "Failed to send message");
-        setMessages((prev) => prev.filter((m) => m.id !== tmpId));
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+
+    socket.emit(
+      "message_send",
+      { conversationId: Number(conversationId), text: trimmed },
+      (res) => {
+        if (!res?.ok) {
+          setError(res?.error || "Failed to send message");
+          setMessages((prev) => prev.filter((m) => m.id !== tmpId));
+        }
       }
-    });
+    );
   }
 
+  // ✅ Upload using backend endpoint: POST /chat/:id/attachments
   async function sendAttachment(file) {
     if (!file || !conversationId) return;
 
@@ -209,7 +268,7 @@ export default function SupportChatPanel({
       const form = new FormData();
       form.append("file", file);
 
-      const res = await fetch(`${API_BASE}/chat/${conversationId}/upload`, {
+      const res = await fetch(`${API_BASE}/chat/${conversationId}/attachments`, {
         method: "POST",
         headers: headerAuth,
         body: form,
@@ -220,14 +279,16 @@ export default function SupportChatPanel({
         throw new Error(body?.message || "Upload failed");
       }
 
-      const body = await res.json().catch(() => ({}));
-      const attachmentUrl = body?.attachmentUrl;
+      const msg = await res.json().catch(() => null);
 
-      if (socket && attachmentUrl) {
-        socket.emit("message_send", { conversationId, attachmentUrl }, (ack) => {
-          if (!ack?.ok) setError(ack?.error || "Failed to send attachment");
+      if (msg?.id) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
         });
       }
+
+      requestAnimationFrame(() => scrollToBottom("smooth"));
     } catch (e) {
       setError(e?.message || "Upload failed");
     } finally {
@@ -257,16 +318,21 @@ export default function SupportChatPanel({
     ? `User #${conversation.customerUserId}`
     : "Guest";
 
+  // ✅ IMPORTANT: h-full + min-h-0 so children can scroll
   const gridClass = showContext
-    ? "h-full grid grid-cols-1 lg:grid-cols-[1fr_360px]"
-    : "h-full grid grid-cols-1";
+    ? "h-full min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_360px]"
+    : "h-full min-h-0 grid grid-cols-1";
+
+  if (!conversationId) return null;
 
   return (
-    <div className="h-full w-full rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl overflow-hidden">
+    // ✅ outer container must be flex/column + min-h-0 + overflow-hidden
+    <div className="h-full w-full min-h-0 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl overflow-hidden flex flex-col">
       <div className={gridClass}>
         {/* Chat */}
-        <div className="h-full flex flex-col min-w-0">
-          <header className="p-4 border-b border-white/10 flex items-start justify-between gap-3">
+        {/* ✅ must be flex-col + min-h-0 + overflow-hidden */}
+        <div className="h-full min-h-0 flex flex-col min-w-0 overflow-hidden">
+          <header className="shrink-0 p-4 border-b border-white/10 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-semibold">Conversation</div>
               <div className="text-[12px] text-white/60">
@@ -276,7 +342,6 @@ export default function SupportChatPanel({
               </div>
             </div>
 
-            {/* ✅ Buttons stay in one line */}
             <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
               <button
                 type="button"
@@ -304,91 +369,99 @@ export default function SupportChatPanel({
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={listRef}>
-            {loadingHistory ? (
-              <div className="text-sm text-white/60">Loading messages…</div>
-            ) : null}
+          {/* ✅ THIS wrapper is what makes the list scroll without moving composer */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div
+              ref={listRef}
+              className="h-full overflow-y-auto p-4 space-y-3"
+            >
+              {loadingHistory ? (
+                <div className="text-sm text-white/60">Loading messages…</div>
+              ) : null}
 
-            {!loadingHistory && messages.length === 0 ? (
-              <div className="text-sm text-white/60">
-                No messages yet. Say hello 👋
-              </div>
-            ) : null}
+              {!loadingHistory && messages.length === 0 ? (
+                <div className="text-sm text-white/60">
+                  No messages yet. Say hello 👋
+                </div>
+              ) : null}
 
-            {messages.map((m) => {
-              const mine = m.senderRole === "support";
-              return (
-                <div
-                  key={m.id}
-                  className={mine ? "flex justify-end" : "flex justify-start"}
-                >
+              {messages.map((m) => {
+                const mine = m.senderRole === "support";
+                const hasAttachment =
+                  !!m.attachmentPath || !!m.attachmentName || !!m.attachmentMime;
+
+                return (
                   <div
-                    className={[
-                      "max-w-[82%] rounded-2xl px-3 py-2 border border-white/10 shadow-sm",
-                      mine ? "bg-white/20" : "bg-black/20",
-                    ].join(" ")}
+                    key={m.id}
+                    className={mine ? "flex justify-end" : "flex justify-start"}
                   >
-                    {m.text ? (
-                      <div className="text-sm whitespace-pre-wrap">{m.text}</div>
-                    ) : null}
+                    <div
+                      className={[
+                        "max-w-[82%] rounded-2xl px-3 py-2 border border-white/10 shadow-sm",
+                        mine ? "bg-white/20" : "bg-black/20",
+                      ].join(" ")}
+                    >
+                      {m.text ? (
+                        <div className="text-sm whitespace-pre-wrap break-words">
+                          {m.text}
+                        </div>
+                      ) : null}
 
-                    {m.attachmentUrl ? (
-                      <AttachmentChip
-                        url={m.attachmentUrl}
-                        onOpen={async () => {
-                          try {
-                            const fileName =
-                              String(m.attachmentUrl).split("/").pop() ||
-                              "attachment";
-                            await downloadChatAttachmentOpen(
-                              conversationId,
-                              fileName,
-                              token
-                            );
-                          } catch (e) {
-                            setError(e?.message || "Failed to open attachment");
-                          }
-                        }}
-                      />
-                    ) : null}
+                      {hasAttachment ? (
+                        <AttachmentChip
+                          label={m.attachmentName || "Attachment"}
+                          onOpen={async () => {
+                            try {
+                              await downloadChatAttachmentOpen(
+                                m.id,
+                                m.attachmentName || "attachment"
+                              );
+                            } catch (e) {
+                              setError(e?.message || "Failed to open attachment");
+                            }
+                          }}
+                        />
+                      ) : null}
 
-                    <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/45">
-                      <span>
-                        {m.senderRole === "support" ? "Support" : "Customer"}
-                      </span>
-                      <span>
-                        {m.createdAt
-                          ? new Date(m.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : ""}
-                      </span>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/45">
+                        <span>{mine ? "Support" : "Customer"}</span>
+                        <span>
+                          {m.createdAt
+                            ? new Date(m.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            {typingState.active ? (
-              <div className="text-[12px] text-white/50">
-                {typingState.role === "customer"
-                  ? "Customer is typing…"
-                  : "Typing…"}
-              </div>
-            ) : null}
+              {typingState.active ? (
+                <div className="text-[12px] text-white/50">
+                  {typingState.role === "customer"
+                    ? "Customer is typing…"
+                    : "Typing…"}
+                </div>
+              ) : null}
+
+              {/* bottom anchor */}
+              <div ref={bottomRef} />
+            </div>
           </div>
 
           {error ? (
-            <div className="px-4 pb-2">
+            <div className="shrink-0 px-4 py-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
                 {error}
               </div>
             </div>
           ) : null}
 
-          {/* ✅ Composer never clips: grid layout */}
-          <div className="p-4 border-t border-white/10">
+          {/* ✅ composer is shrink-0 so it never gets pushed off */}
+          <div className="shrink-0 p-4 pb-6 border-t border-white/10 bg-black/10">
             <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
               <textarea
                 value={text}
@@ -439,8 +512,8 @@ export default function SupportChatPanel({
 
         {/* Context */}
         {showContext ? (
-          <aside className="hidden lg:block h-full border-l border-white/10">
-            <div className="h-full overflow-y-auto p-4 space-y-3">
+          <aside className="hidden lg:block h-full min-h-0 border-l border-white/10">
+            <div className="h-full min-h-0 overflow-y-auto p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold">Customer context</div>
                 {loadingContext ? (

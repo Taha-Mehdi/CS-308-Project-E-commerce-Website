@@ -119,11 +119,13 @@ export default function SupportPage() {
         setQueue([]);
         return;
       }
+
       setError("");
       setQueue(Array.isArray(res.queue) ? res.queue : []);
     });
   }
 
+  // Restore active chats + selected chat
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (loadingUser || !isSupport) return;
@@ -141,23 +143,21 @@ export default function SupportPage() {
     setActiveChats(normalized);
 
     const sel = Number(restoredSelected);
-    if (
-      Number.isInteger(sel) &&
-      sel > 0 &&
-      normalized.some((c) => c.id === sel)
-    ) {
+    if (Number.isInteger(sel) && sel > 0 && normalized.some((c) => c.id === sel)) {
       setSelectedId(sel);
     } else {
       setSelectedId(null);
     }
   }, [loadingUser, isSupport]);
 
+  // Persist active chats
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!isSupport) return;
     localStorage.setItem(LS_ACTIVE, JSON.stringify(activeChats));
   }, [activeChats, isSupport]);
 
+  // Persist selected
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!isSupport) return;
@@ -165,6 +165,7 @@ export default function SupportPage() {
     else localStorage.removeItem(LS_SELECTED);
   }, [selectedId, isSupport]);
 
+  // Socket setup
   useEffect(() => {
     if (!token || !isSupport) return;
 
@@ -176,6 +177,7 @@ export default function SupportPage() {
       setStatus("live");
       requestQueue(s);
 
+      // Rejoin active rooms after refresh/reconnect
       activeChats.forEach((c) => {
         if (c?.id) s.emit("join_conversation", { conversationId: c.id });
       });
@@ -185,10 +187,8 @@ export default function SupportPage() {
     const onConnectError = () => setStatus("error");
 
     const onQueueUpdated = ({ type, conversation, conversationId }) => {
-      if (conversation?.id)
-        setQueue((prev) => prev.filter((c) => c.id !== conversation.id));
-      if (conversationId)
-        setQueue((prev) => prev.filter((c) => c.id !== Number(conversationId)));
+      if (conversation?.id) setQueue((prev) => prev.filter((c) => c.id !== conversation.id));
+      if (conversationId) setQueue((prev) => prev.filter((c) => c.id !== Number(conversationId)));
 
       const closedId = conversationId
         ? Number(conversationId)
@@ -271,7 +271,9 @@ export default function SupportPage() {
   const selected = activeChats.find((c) => c.id === selectedId) || null;
   const inChatMode = Boolean(selected);
 
-  /* CHAT MODE */
+  /* =========================
+     CHAT MODE
+  ========================= */
   if (inChatMode) {
     return (
       <div className="space-y-3">
@@ -345,7 +347,8 @@ export default function SupportPage() {
           </div>
         ) : null}
 
-        <div className="h-[72vh]">
+        {/* ✅ FIXED: the panel is now constrained + can scroll internally */}
+        <div className="h-[78vh] flex min-h-0">
           <SupportChatPanel
             socket={socket}
             token={token}
@@ -385,6 +388,7 @@ export default function SupportPage() {
                     {refreshing ? <Spinner className="text-white/80" /> : null}
                     Refresh
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setQueueDrawerOpen(false)}
@@ -435,7 +439,9 @@ export default function SupportPage() {
     );
   }
 
-  /* DASHBOARD MODE */
+  /* =========================
+     DASHBOARD MODE
+  ========================= */
   return (
     <div className="space-y-4">
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-2xl">
@@ -498,16 +504,12 @@ export default function SupportPage() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
-        {/* Waiting queue */}
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-2xl">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Waiting queue</div>
-            <div className="text-[12px] text-white/60">
-              {filteredQueue.length} shown
-            </div>
+            <div className="text-[12px] text-white/60">{filteredQueue.length} shown</div>
           </div>
 
-          {/* ✅ single column list (long cards) */}
           <div className="space-y-3">
             {filteredQueue.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
@@ -526,7 +528,6 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {/* Active chats */}
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-2xl">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Active chats</div>
@@ -546,9 +547,7 @@ export default function SupportPage() {
                   className="w-full text-left rounded-2xl border border-white/10 bg-black/20 hover:bg-white/10 transition p-3"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold">
-                      Conversation #{c.id}
-                    </div>
+                    <div className="text-sm font-semibold">Conversation #{c.id}</div>
                     <div className="text-[11px] text-white/60">
                       {c.customerUserId ? `User #${c.customerUserId}` : "Guest"}
                     </div>
